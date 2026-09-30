@@ -2,30 +2,53 @@
 # Security & Secret Credentials
 # ==========================================
 .env
+.env.*
+!.env.example
 *.pem
 *.key
 *.token
+*.cert
 
 # ==========================================
-# Python Virtual Environments
+# Python Virtual Environments & Packages
 # ==========================================
 .venv/
 venv/
 env/
+ENV/
 
 # ==========================================
-# Python Cache & Bytecode
+# Build & Distribution Artifacts
+# ==========================================
+build/
+dist/
+*.egg-info/
+*.egg
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+
+# ==========================================
+# Python Cache, Bytecode & Analysis
 # ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
+.mypy_cache/
+.ruff_cache/
 
 # ==========================================
 # Testing & Coverage Artifacts
 # ==========================================
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+nosetests.xml
+coverage.xml
 
 # ==========================================
 # Runtime Logs, Databases & System State
@@ -41,3 +64,11 @@ agent_terminal.log
 .DS_Store
 .vscode/
 .idea/
+
+# ==========================================
+# Backup & Editor Artifacts
+# ==========================================
+*.bak
+*.swp
+*.swo
+*~

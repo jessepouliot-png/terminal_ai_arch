@@ -1,3 +1,0 @@
-[console_scripts]
-agent-terminal = arch_ai.agent_terminal:main
-arch-terminal = arch_ai.agent_terminal:main

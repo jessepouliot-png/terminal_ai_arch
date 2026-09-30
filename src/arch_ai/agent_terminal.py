@@ -47,6 +47,23 @@ from arch_ai.sandbox import sandbox_manager, SandboxManager
 from arch_ai.memory_manager import MemoryManager
 from arch_ai.response_utils import extract_full_model_response, extract_function_calls
 
+from rich.markdown import CodeBlock
+from rich.syntax import Syntax
+
+class CustomCodeBlock(CodeBlock):
+    def __rich_console__(self, console, options):
+        code = str(self.text).rstrip()
+        yield Syntax(
+            code,
+            self.lexer_name,
+            theme=self.theme,
+            word_wrap=True,
+            background_color="default"
+        )
+
+Markdown.elements["fence"] = CustomCodeBlock
+Markdown.elements["code_block"] = CustomCodeBlock
+
 
 
 def rainbow_text(text: str, freq: float = 0.1) -> Text:
