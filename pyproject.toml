@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arch-ai-terminal"
+version = "1.0.0"
+description = "Production-grade AI Terminal for Arch Linux with Docker Sandbox, Steam & ProtonDB, and Gemini Tool Calling"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "google-genai>=1.0.0",
+    "prompt-toolkit>=3.0.0",
+    "rich>=13.0.0",
+    "psutil>=5.9.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "googlesearch-python>=1.2.0",
+    "docker>=7.0.0",
+    "tenacity>=8.0.0",
+    "aiosqlite>=0.20.0"
+]
+
+[project.scripts]
+arch-terminal = "agent_terminal:main"
+agent-terminal = "agent_terminal:main"
+
+[tool.setuptools]
+py-modules = [
+    "agent_terminal",
+    "analyzer",
+    "clipboard_utils",
+    "config",
+    "gaming",
+    "image_generator",
+    "logger_utils",
+    "sandbox",
+    "searcher",
+    "steam_utils",
+    "tools",
+    "troubleshooter"
+]
+

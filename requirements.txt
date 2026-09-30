@@ -1,0 +1,10 @@
+google-genai
+prompt_toolkit
+rich
+psutil
+httpx
+python-dotenv
+aiosqlite
+googlesearch-python
+pytest-asyncio
+
