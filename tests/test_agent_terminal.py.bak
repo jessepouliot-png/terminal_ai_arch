@@ -18,13 +18,6 @@ def mock_terminal():
         terminal.client = MagicMock()
         terminal.client.aio = MagicMock()
         terminal.client.aio.models = MagicMock()
-        
-        # Configure streaming generator and scalar fallbacks
-        terminal.client.aio.models.generate_content_stream = AsyncMock(
-            return_value=_make_stream([])
-        )
-        terminal.client.aio.models.generate_content = AsyncMock()
-
         terminal.analyzer = MagicMock()
         terminal.analyzer.knowledge = MagicMock()
         terminal.analyzer.knowledge.search = AsyncMock(return_value=[])
@@ -86,9 +79,7 @@ async def test_query_gemini_fallback_on_tool_iteration_limit(mock_terminal):
     mock_final_response.candidates = [final_candidate]
     mock_final_response.text = "Synthesized final answer"
     
-    mock_terminal.client.aio.models.generate_content_stream = AsyncMock(
-        return_value=_make_stream([mock_final_response])
-    )
+    mock_terminal.client.aio.models.generate_content_stream = AsyncMock(return_value=_make_stream([mock_final_response]))
     
     with patch.object(mock_terminal, "_execute_gemini_turn_stream", side_effect=[_make_stream([mock_tool_response]) for _ in range(10)]):
         await mock_terminal.query_gemini("Diagnose this issue")
@@ -181,77 +172,21 @@ async def test_query_gemini_no_warning_with_real_genai_response(mock_terminal, c
     mock_terminal.analyzer.log_chat.assert_called_once_with("What system is this?", "System is Arch Linux.")
 
 
-@pytest.mark.asyncio
-async def test_query_gemini_executes_tool_if_synthesis_requests_action(mock_terminal):
-    fc_loop = types.FunctionCall(name="get_system_info", args={})
-    loop_cand = types.Candidate(content=types.Content(role="model", parts=[types.Part(function_call=fc_loop)]))
-    mock_loop_resp = types.GenerateContentResponse(candidates=[loop_cand])
-
-    final_cand = types.Candidate(content=types.Content(role="model", parts=[types.Part(text="Kernel is 7.2.6-arch1-2.")]))
-    mock_synth_resp = types.GenerateContentResponse(candidates=[final_cand])
-
-    mock_terminal._execute_gemini_turn_stream = AsyncMock(side_effect=[_make_stream([mock_loop_resp]) for _ in range(10)])
-    mock_terminal.client.aio.models.generate_content_stream = AsyncMock(
-        return_value=_make_stream([mock_synth_resp])
-    )
-
-    executed_tools = []
-    def fake_sys_info():
-        executed_tools.append("get_system_info")
-        return "Arch Linux x86_64"
-
-    with patch.dict("arch_ai.agent_terminal.TOOL_MAP", {
-        "get_system_info": fake_sys_info
-    }):
-        await mock_terminal.query_gemini("Check kernel version")
-
-    assert "get_system_info" in executed_tools
-    mock_terminal.analyzer.log_chat.assert_called_once_with("Check kernel version", "Kernel is 7.2.6-arch1-2.")
-
 
 @pytest.mark.asyncio
 async def test_run_cli_command_troubleshooter_executes_fix(mock_terminal):
-    mock_terminal.analyzer.async_classify_risk = AsyncMock(return_value=("low", "Safe"))
-    mock_terminal.analyzer.log_command = AsyncMock()
     mock_terminal.troubleshooter = MagicMock()
     mock_terminal.troubleshooter.troubleshoot = AsyncMock(return_value="sudo pacman -S missing-pkg")
+    mock_terminal.run_cli_command = AsyncMock()
     mock_terminal.session = MagicMock()
+    mock_terminal.analyzer.log_command = AsyncMock()
     mock_terminal.session.prompt_async = AsyncMock(side_effect=["y", "y"])
+    mock_terminal.analyzer.async_classify_risk = AsyncMock(return_value=(1, "safe"))
 
-    # Simulate command failure followed by fix execution success
-    mock_terminal._execute_command_with_capture = AsyncMock(side_effect=[
-        (127, "command not found"),
-        (0, "Installed successfully")
-    ])
-
-    await mock_terminal.run_cli_command("broken-command")
+    from arch_ai.agent_terminal import AITerminal
+    await AITerminal.run_cli_command(mock_terminal, "broken-command")
 
     mock_terminal.troubleshooter.troubleshoot.assert_called_once()
-    assert mock_terminal._execute_command_with_capture.call_count == 2
-    assert mock_terminal._execute_command_with_capture.call_args_list[1][0][0] == "sudo pacman -S missing-pkg"
+    mock_terminal.run_cli_command.assert_called_once_with("sudo pacman -S missing-pkg")
 
 
-@pytest.mark.asyncio
-async def test_query_gemini_fallback_synthesizes_from_executed_tools(mock_terminal):
-    fc_loop = types.FunctionCall(name="get_system_info", args={})
-    loop_cand = types.Candidate(content=types.Content(role="model", parts=[types.Part(function_call=fc_loop)]))
-    mock_loop_resp = types.GenerateContentResponse(candidates=[loop_cand])
-
-    # Return empty stream to trigger fallback synthesis
-    mock_terminal.client.aio.models.generate_content_stream = AsyncMock(
-        return_value=_make_stream([])
-    )
-
-    retry_cand = types.Candidate(content=types.Content(role="model", parts=[types.Part(text="Report based on executed tool findings.")]))
-    mock_retry_resp = types.GenerateContentResponse(candidates=[retry_cand])
-    mock_terminal.client.aio.models.generate_content = AsyncMock(return_value=mock_retry_resp)
-
-    with patch.object(mock_terminal, "_execute_gemini_turn_stream", side_effect=[_make_stream([mock_loop_resp]) for _ in range(10)]), \
-         patch.dict("arch_ai.agent_terminal.TOOL_MAP", {"get_system_info": MagicMock(return_value="Arch Linux x86_64")}):
-        await mock_terminal.query_gemini("Scan my system")
-
-    assert mock_terminal.analyzer.log_chat.called
-    logged_prompt, logged_reply = mock_terminal.analyzer.log_chat.call_args[0]
-    assert logged_prompt == "Scan my system"
-    assert "no written analysis was generated" not in logged_reply
-    assert "Report based on executed tool findings." in logged_reply

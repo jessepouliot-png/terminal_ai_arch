@@ -11,8 +11,8 @@ import shlex
 import asyncio
 from typing import Tuple, Optional, Set, Dict, Any
 
-from logger_utils import StructuredLogger
-from config import Config
+from arch_ai.logger_utils import StructuredLogger
+from arch_ai.config import Config
 
 log = StructuredLogger(logging.getLogger("agent_terminal.sandbox"))
 

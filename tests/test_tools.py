@@ -1,7 +1,7 @@
 import os
 import tempfile
 import pytest
-from tools import SystemTools, TOOL_MAP, TOOLS_SCHEMA
+from arch_ai.tools import SystemTools, TOOL_MAP, TOOLS_SCHEMA
 
 def test_system_tools_schema():
     assert len(TOOLS_SCHEMA) >= 12
@@ -94,8 +94,8 @@ def test_scan_and_optimize_gaming_system_tool():
 
 def test_list_files():
     result = SystemTools.list_files(".")
-    assert "agent_terminal.py" in result
-    assert "tools.py" in result
+    assert "pyproject.toml" in result
+    assert "src" in result
 
 def test_list_files_invalid_dir():
     result = SystemTools.list_files("/non/existent/dir/xyz_123")

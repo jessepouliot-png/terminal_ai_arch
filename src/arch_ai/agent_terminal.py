@@ -36,15 +36,16 @@ from rich.logging import RichHandler
 from rich.spinner import Spinner
 from rich.markup import escape
 
-from config import Config, BORDERLESS_BOX
-from mcp_manager import MCPManager
-from analyzer import BehaviorAnalyzer
-from troubleshooter import Troubleshooter
-from gaming import GamingCompanion
-from image_generator import ImageGenerator
-from tools import TOOLS_SCHEMA, TOOL_MAP
-from sandbox import sandbox_manager, SandboxManager
-from response_utils import extract_full_model_response, extract_function_calls
+from arch_ai.config import Config, BORDERLESS_BOX
+from arch_ai.mcp_manager import MCPManager
+from arch_ai.analyzer import BehaviorAnalyzer
+from arch_ai.troubleshooter import Troubleshooter
+from arch_ai.gaming import GamingCompanion
+from arch_ai.image_generator import ImageGenerator
+from arch_ai.tools import TOOLS_SCHEMA, TOOL_MAP
+from arch_ai.sandbox import sandbox_manager, SandboxManager
+from arch_ai.memory_manager import MemoryManager
+from arch_ai.response_utils import extract_full_model_response, extract_function_calls
 
 
 
@@ -57,7 +58,7 @@ def rainbow_text(text: str, freq: float = 0.1) -> Text:
         rich_text.append(char, style=f"rgb({r},{g},{b})")
     return rich_text
 
-from logger_utils import StructuredLogger, setup_logging
+from arch_ai.logger_utils import StructuredLogger, setup_logging
 
 log = setup_logging(Config.LOG_FILE)
 
@@ -419,9 +420,13 @@ class AITerminal:
         final_prompt = f"{history_summary}{local_context}{prompt_text}"
         contents.append(types.Content(role="user", parts=[types.Part(text=final_prompt)]))
         
+        memories = MemoryManager.get_instance().get_all_memories()
+        memory_str = "\n".join([f"- {m}" for m in memories]) if memories else "None"
+        
         system_instruction = (
             "ROLE: You are the 'Arch AI System Architect', an expert Linux and development assistant.\n"
             "KNOWLEDGE: You operate using 'Google Search Grounding' and local 'System Tools' for verified real-world accuracy.\n"
+            f"LONG TERM MEMORY (User Preferences & Facts):\n{memory_str}\n\n"
             "TOOLS: You have access to system inspection and execution tools: analyze_gaming_session, scan_gaming_system, optimize_gaming_system, "
             "execute_host_command, list_files, read_file, write_file, patch_file, get_system_info, check_process, "
             "execute_code_in_sandbox, execute_sandbox_command, write_to_sandbox_file, read_sandbox_file, get_steam_game_compatibility, get_steam_library.\n"
@@ -449,6 +454,7 @@ class AITerminal:
             function_calls = []
             candidate_parts = []
             
+            self.console.print(rainbow_text("\nᗧ ARCH AI ASSISTANT"))
             with Live(console=self.console, refresh_per_second=15, transient=False) as live:
                 try:
                     response_stream = await self._execute_gemini_turn_stream(contents, system_instruction, tools_list)
@@ -459,9 +465,9 @@ class AITerminal:
                         chunk_text = extract_full_model_response(chunk, include_function_calls=False)
                         if chunk_text:
                             turn_text += chunk_text
-                            live.update(Panel(Markdown(turn_text), title=rainbow_text("ᗧ ARCH AI ASSISTANT"), border_style=Config.COLOR_GHOST, box=BORDERLESS_BOX, padding=(1, 2)))
+                            live.update(Markdown(turn_text))
                             
-                        from response_utils import extract_parts_from_response
+                        from arch_ai.response_utils import extract_parts_from_response
                         for p in extract_parts_from_response(chunk):
                             if getattr(p, "function_call", None):
                                 function_calls.append(p.function_call)
@@ -536,6 +542,7 @@ class AITerminal:
         # If the model exhausted tool iterations without generating a final text response, force a synthesis turn
         if not full_reply:
             synth_text = ""
+            self.console.print(rainbow_text("\nᗧ ARCH AI ASSISTANT"))
             with Live(console=self.console, refresh_per_second=15, transient=False) as live:
                 try:
                     synthesis_user_msg = (
@@ -575,7 +582,7 @@ class AITerminal:
                         chunk_text = extract_full_model_response(chunk, include_function_calls=False)
                         if chunk_text:
                             synth_text += chunk_text
-                            live.update(Panel(Markdown(synth_text), title=rainbow_text("ᗧ ARCH AI ASSISTANT"), border_style=Config.COLOR_GHOST, box=BORDERLESS_BOX, padding=(1, 2)))
+                            live.update(Markdown(synth_text))
 
                     if intermediate_texts:
                         full_reply = "\n\n".join(intermediate_texts + ([synth_text] if synth_text else []))

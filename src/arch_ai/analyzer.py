@@ -9,9 +9,9 @@ from datetime import datetime
 from collections import deque
 from typing import List, Dict, Optional, Tuple, Any
 
-from config import Config
+from arch_ai.config import Config
 
-from logger_utils import StructuredLogger
+from arch_ai.logger_utils import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("agent_terminal.analyzer"))
 

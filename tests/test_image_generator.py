@@ -1,7 +1,7 @@
 import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from image_generator import ImageGenerator
+from arch_ai.image_generator import ImageGenerator
 
 def test_image_generator_init():
     gen = ImageGenerator()

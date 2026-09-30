@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 
-from config import Config, BORDERLESS_BOX
+from arch_ai.config import Config, BORDERLESS_BOX
 
 log = logging.getLogger("agent_terminal.image")
 

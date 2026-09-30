@@ -6,12 +6,58 @@ import psutil
 import logging
 from typing import List, Dict, Optional
 
-from sandbox import sandbox_manager
+from arch_ai.sandbox import sandbox_manager
 
 logger = logging.getLogger("agent_terminal.tools")
 
 class SystemTools:
     """A collection of safe system tools for the AI agent."""
+    @staticmethod
+    def spawn_background_researcher(task_description: str) -> str:
+        """Spawns an asynchronous background sub-agent to perform deep research or long-running tasks without blocking the main terminal."""
+        from arch_ai.subagents import SubAgentManager
+        return SubAgentManager.get_instance().spawn_researcher(task_description)
+
+    @staticmethod
+    def save_memory(fact: str) -> str:
+        """Saves a long-term fact or preference about the user or project into persistent memory."""
+        from arch_ai.memory_manager import MemoryManager
+        return MemoryManager.get_instance().save_memory(fact)
+
+    @staticmethod
+    def clear_memory(fact: str) -> str:
+        """Removes a fact from the persistent memory store."""
+        from arch_ai.memory_manager import MemoryManager
+        return MemoryManager.get_instance().clear_memory(fact)
+
+    @staticmethod
+    def semantic_search(query: str, n_results: int = 5) -> str:
+        """Searches the indexed codebase semantically for the given query."""
+        from arch_ai.rag_searcher import RAGManager
+        return RAGManager.get_instance().semantic_search(query, n_results)
+
+    @staticmethod
+    def index_directory(path: str = ".") -> str:
+        """Indexes all python files in the directory for semantic search."""
+        import os
+        from arch_ai.rag_searcher import RAGManager
+        rag = RAGManager.get_instance()
+        
+        resolved_path = os.path.abspath(os.path.expanduser(path))
+        if not os.path.exists(resolved_path):
+            return f"Error: Directory not found: {path}"
+            
+        count = 0
+        for root, _, files in os.walk(resolved_path):
+            if ".venv" in root or "__pycache__" in root or ".git" in root:
+                continue
+            for file in files:
+                if file.endswith((".py", ".md", ".txt", ".json", ".toml", ".sh")):
+                    filepath = os.path.join(root, file)
+                    rag.index_file(filepath)
+                    count += 1
+        return f"Successfully indexed {count} files in {path}."
+
 
     @staticmethod
     def list_files(path: str = ".") -> str:
@@ -139,8 +185,8 @@ class SystemTools:
     async def generate_image(prompt: str) -> str:
         """Generates an AI image from a text prompt and saves it to disk."""
         from google import genai
-        from config import Config
-        from image_generator import ImageGenerator
+        from arch_ai.config import Config
+        from arch_ai.image_generator import ImageGenerator
 
         if not Config.GEMINI_API_KEY:
             return "Error: GEMINI_API_KEY not configured."
@@ -241,7 +287,7 @@ class SystemTools:
     def scan_gaming_system() -> str:
         """Scans PC hardware, kernel parameters, GPU Vulkan drivers, and gaming daemons on Arch Linux for gaming readiness."""
         try:
-            from gaming import GamingOptimizer
+            from arch_ai.gaming import GamingOptimizer
             data = GamingOptimizer.scan_system()
             return GamingOptimizer.format_scan_report(data)
         except Exception as e:
@@ -251,7 +297,7 @@ class SystemTools:
     def analyze_gaming_session() -> str:
         """Analyzes active gaming processes, GPU & VRAM telemetry, CPU governor, Wayland compositor event pacing, and micro-stutter sources."""
         try:
-            from gaming import GamingOptimizer
+            from arch_ai.gaming import GamingOptimizer
             data = GamingOptimizer.analyze_gaming_session()
             return GamingOptimizer.format_gaming_session_report(data)
         except Exception as e:
@@ -261,7 +307,7 @@ class SystemTools:
     def optimize_gaming_system() -> str:
         """Applies or previews Arch Linux performance optimizations (GameMode, sysctl, CPU governor) for gaming."""
         try:
-            from gaming import GamingOptimizer
+            from arch_ai.gaming import GamingOptimizer
             success, actions, summary = GamingOptimizer.optimize_system(apply=True)
             return f"Gaming Optimization Report:\n{summary}"
         except Exception as e:
@@ -270,14 +316,14 @@ class SystemTools:
     @staticmethod
     async def get_steam_game_compatibility(game: str) -> str:
         """Checks ProtonDB compatibility rating, Linux launch parameters, and system requirements for a Steam game by title or AppID."""
-        from steam_utils import SteamClient
+        from arch_ai.steam_utils import SteamClient
         async with SteamClient() as client:
             return await client.format_game_report(game)
 
     @staticmethod
     async def get_steam_library() -> str:
         """Fetches the user's Steam game library or locally installed Steam games with playtimes and sizes."""
-        from steam_utils import SteamClient
+        from arch_ai.steam_utils import SteamClient
         async with SteamClient() as client:
             return await client.format_owned_games_summary(limit=15)
 
@@ -299,7 +345,12 @@ TOOLS_SCHEMA = [
     SystemTools.read_sandbox_file,
     SystemTools.generate_image,
     SystemTools.get_steam_game_compatibility,
-    SystemTools.get_steam_library
+    SystemTools.get_steam_library,
+    SystemTools.index_directory,
+    SystemTools.semantic_search,
+    SystemTools.save_memory,
+    SystemTools.clear_memory,
+    SystemTools.spawn_background_researcher
 ]
 
 

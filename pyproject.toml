@@ -22,22 +22,10 @@ dependencies = [
 ]
 
 [project.scripts]
-arch-terminal = "agent_terminal:main"
-agent-terminal = "agent_terminal:main"
+arch-terminal = "arch_ai.agent_terminal:main"
+agent-terminal = "arch_ai.agent_terminal:main"
 
 [tool.setuptools]
-py-modules = [
-    "agent_terminal",
-    "analyzer",
-    "clipboard_utils",
-    "config",
-    "gaming",
-    "image_generator",
-    "logger_utils",
-    "sandbox",
-    "searcher",
-    "steam_utils",
-    "tools",
-    "troubleshooter"
-]
+package-dir = {"" = "src"}
+packages = ["arch_ai"]
 

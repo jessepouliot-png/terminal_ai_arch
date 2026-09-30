@@ -13,9 +13,9 @@ from rich.live import Live
 from rich.spinner import Spinner, SPINNERS
 from rich.markup import escape
 from google.genai import types
-from steam_utils import SteamClient
-from config import Config, BORDERLESS_BOX
-from response_utils import extract_full_model_response
+from arch_ai.steam_utils import SteamClient
+from arch_ai.config import Config, BORDERLESS_BOX
+from arch_ai.response_utils import extract_full_model_response
 
 # Register custom retro-arcade gaming spinner with animated gaming icons
 GAMING_SPINNER_NAME = "gaming_arcade"

@@ -9,14 +9,14 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.markup import escape
 
-from config import Config, BORDERLESS_BOX
-from searcher import WebSearcher
+from arch_ai.config import Config, BORDERLESS_BOX
+from arch_ai.searcher import WebSearcher
 
 # Configure logging for production use
 log = logging.getLogger(__name__)
 
-from clipboard_utils import extract_primary_command
-from response_utils import extract_full_model_response
+from arch_ai.clipboard_utils import extract_primary_command
+from arch_ai.response_utils import extract_full_model_response
 
 class Troubleshooter:
     """An AI diagnostic engine with Google Search Grounding for accurate fixes."""

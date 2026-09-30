@@ -1,5 +1,5 @@
 import pytest
-from steam_utils import SteamClient
+from arch_ai.steam_utils import SteamClient
 
 def test_steam_client_initialization():
     client = SteamClient(api_key="test_key", steam_id="test_id")
@@ -84,7 +84,7 @@ def test_steam_launch_game_missing():
     assert "Could not find installed game" in msg
 
 def test_gaming_optimizer_scan_and_format():
-    from gaming import GamingOptimizer
+    from arch_ai.gaming import GamingOptimizer
     data = GamingOptimizer.scan_system()
     assert "score" in data
     assert "rating" in data
@@ -99,7 +99,7 @@ def test_gaming_optimizer_scan_and_format():
     assert f"{data['score']}/100" in report
 
 def test_gaming_optimizer_actions():
-    from gaming import GamingOptimizer
+    from arch_ai.gaming import GamingOptimizer
     success, actions, summary = GamingOptimizer.optimize_system(apply=False)
     assert isinstance(actions, list)
     assert len(actions) > 0
@@ -107,7 +107,7 @@ def test_gaming_optimizer_actions():
 
 def test_gaming_arcade_spinner_registration():
     from rich.spinner import SPINNERS
-    from gaming import GAMING_SPINNER_NAME
+    from arch_ai.gaming import GAMING_SPINNER_NAME
     assert GAMING_SPINNER_NAME in SPINNERS
     spinner_def = SPINNERS[GAMING_SPINNER_NAME]
     assert "frames" in spinner_def
@@ -118,7 +118,7 @@ def test_gaming_arcade_spinner_registration():
 async def test_gaming_companion_query_streaming_and_spinner():
     from unittest.mock import MagicMock, AsyncMock
     from rich.console import Console
-    from gaming import GamingCompanion
+    from arch_ai.gaming import GamingCompanion
 
     mock_client = MagicMock()
     mock_chunk1 = MagicMock()

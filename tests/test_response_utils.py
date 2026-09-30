@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from google.genai import types
 
-from response_utils import (
+from arch_ai.response_utils import (
     extract_parts_from_response,
     extract_function_calls,
     extract_full_model_response

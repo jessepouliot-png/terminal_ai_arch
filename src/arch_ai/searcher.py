@@ -14,8 +14,8 @@ from rich.table import Table
 from rich.markdown import Markdown
 from rich.markup import escape
 from rich import box
-from config import Config, BORDERLESS_BOX
-from response_utils import extract_full_model_response
+from arch_ai.config import Config, BORDERLESS_BOX
+from arch_ai.response_utils import extract_full_model_response
 
 
 

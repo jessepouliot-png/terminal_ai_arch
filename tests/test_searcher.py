@@ -1,5 +1,5 @@
 import pytest
-from searcher import WebSearcher
+from arch_ai.searcher import WebSearcher
 
 def test_extract_content():
     searcher = WebSearcher()

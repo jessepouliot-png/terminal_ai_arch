@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-import clipboard_utils
+from arch_ai import clipboard_utils
 
 def test_extract_commands_from_fenced_code():
     text = """
@@ -69,8 +69,8 @@ def test_copy_to_clipboard_fallbacks():
 
 @pytest.mark.asyncio
 async def test_terminal_clean_prompt_and_native_mouse():
-    with patch("google.genai.Client"):
-        from agent_terminal import AITerminal
+    with patch("google.genai.Client"), patch("arch_ai.agent_terminal.Config.validate"):
+        from arch_ai.agent_terminal import AITerminal
         term = AITerminal()
 
         # Mouse support must be False to allow unrestricted native terminal text/code selection and copying
@@ -91,10 +91,10 @@ async def test_terminal_clean_prompt_and_native_mouse():
 
 @pytest.mark.asyncio
 async def test_terminal_advanced_features():
-    with patch("google.genai.Client") as mock_client:
+    with patch("google.genai.Client") as mock_client, patch("arch_ai.agent_terminal.Config.validate"):
         mock_instance = MagicMock()
         mock_client.return_value = mock_instance
-        from agent_terminal import AITerminal, _BASE_COMMANDS, _GAMING_SUBS
+        from arch_ai.agent_terminal import AITerminal, _BASE_COMMANDS, _GAMING_SUBS
         term = AITerminal()
 
         # 1. Base commands check
@@ -114,7 +114,7 @@ async def test_terminal_advanced_features():
                 await term.synthesize_nl_command("list all files detailed")
 
         # 4. _ensure_sandbox_active helper check
-        with patch("agent_terminal.sandbox_manager.is_active", True):
+        with patch("arch_ai.agent_terminal.sandbox_manager.is_active", True):
             assert term._ensure_sandbox_active() is True
 
 

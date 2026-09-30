@@ -1,7 +1,7 @@
 import pytest
 import os
 import tempfile
-from analyzer import BehaviorAnalyzer
+from arch_ai.analyzer import BehaviorAnalyzer
 
 @pytest.fixture
 async def analyzer():

@@ -10,7 +10,7 @@ import psutil
 import httpx
 import aiosqlite
 from typing import Optional, Dict, Any, List, Tuple, Union
-from config import Config
+from arch_ai.config import Config
 
 log = logging.getLogger("agent_terminal.steam")
 

@@ -2,7 +2,7 @@ import pytest
 import signal
 import sys
 from unittest.mock import patch, MagicMock
-from sandbox import (
+from arch_ai.sandbox import (
     SandboxManager,
     _active_sandboxes,
     _cleanup_all_sandboxes,
