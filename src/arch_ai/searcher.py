@@ -4,8 +4,6 @@ import logging
 import httpx
 import asyncio
 import re
-import json
-import urllib.parse
 from typing import List, Dict, Optional
 from googlesearch import search
 from rich.console import Console
@@ -13,19 +11,20 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.markdown import Markdown
 from rich.markup import escape
-from rich import box
 from arch_ai.config import Config, BORDERLESS_BOX
 from arch_ai.response_utils import extract_full_model_response
 
 
-
-_RE_SCRIPTS_STYLES = re.compile(r"<(script|style|nav|footer|header).*?>.*?</\1>", flags=re.DOTALL | re.IGNORECASE)
+_RE_SCRIPTS_STYLES = re.compile(
+    r"<(script|style|nav|footer|header).*?>.*?</\1>", flags=re.DOTALL | re.IGNORECASE
+)
 _RE_HTML_TAGS = re.compile(r"<.*?>")
 _RE_WHITESPACE = re.compile(r"\s+")
 _RE_TITLE = re.compile(r"<title>(.*?)</title>", flags=re.IGNORECASE)
 
 
 log = logging.getLogger("agent_terminal")
+
 
 class WebSearcher:
     def __init__(self, model=None):
@@ -41,9 +40,11 @@ class WebSearcher:
         html = _RE_SCRIPTS_STYLES.sub("", html)
         text = _RE_HTML_TAGS.sub(" ", html)
         text = _RE_WHITESPACE.sub(" ", text).strip()
-        return text[:2500] # Increased limit for more detail
+        return text[:2500]  # Increased limit for more detail
 
-    async def fetch_source(self, url: str, client: Optional[httpx.AsyncClient] = None) -> Optional[Dict[str, str]]:
+    async def fetch_source(
+        self, url: str, client: Optional[httpx.AsyncClient] = None
+    ) -> Optional[Dict[str, str]]:
         """Fetches a single URL asynchronously and returns its content."""
         try:
             if client is not None:
@@ -52,7 +53,7 @@ class WebSearcher:
                     return {
                         "url": url,
                         "content": self._extract_content(response.text),
-                        "title": self._get_title(response.text)
+                        "title": self._get_title(response.text),
                     }
             else:
                 async with httpx.AsyncClient(headers=self.headers, timeout=12.0) as local_client:
@@ -61,7 +62,7 @@ class WebSearcher:
                         return {
                             "url": url,
                             "content": self._extract_content(response.text),
-                            "title": self._get_title(response.text)
+                            "title": self._get_title(response.text),
                         }
         except Exception as e:
             log.warning(f"Failed to fetch {url}: {e}")
@@ -86,18 +87,20 @@ class WebSearcher:
                         "api_key": api_key,
                         "query": query,
                         "search_depth": "advanced",
-                        "max_results": num_results
-                    }
+                        "max_results": num_results,
+                    },
                 )
                 if response.status_code == 200:
                     data = response.json()
                     results = []
                     for r in data.get("results", []):
-                        results.append({
-                            "url": r.get("url"),
-                            "title": r.get("title", "No Title"),
-                            "content": r.get("content", "No Content")
-                        })
+                        results.append(
+                            {
+                                "url": r.get("url"),
+                                "title": r.get("title", "No Title"),
+                                "content": r.get("content", "No Content"),
+                            }
+                        )
                     return results
                 else:
                     log.error(f"Tavily API error: {response.status_code} - {response.text}")
@@ -108,7 +111,7 @@ class WebSearcher:
     async def search_and_analyze(self, query: str, num_results: int = 3) -> Dict:
         """The core search process: API -> Custom Scraper -> Fallback -> Analyze."""
         results = {"query": query, "sources": [], "summary": ""}
-        
+
         # 1. Primary: Stable Search API (Tavily)
         log.info(f"Initiating stable API search for: {query}")
         results["sources"] = await self._tavily_search(query, num_results)
@@ -117,11 +120,13 @@ class WebSearcher:
         if not results["sources"]:
             log.info("API search returned no results. Falling back to scraping...")
             found_urls = []
-            
+
             # Custom Google Scraper
             try:
                 # Offload blocking googlesearch generator to thread pool
-                found_urls = await asyncio.to_thread(lambda: list(search(query, num_results=num_results)))
+                found_urls = await asyncio.to_thread(
+                    lambda: list(search(query, num_results=num_results))
+                )
             except Exception as e:
                 log.warning(f"Scraper fallback failed: {e}")
 
@@ -135,11 +140,18 @@ class WebSearcher:
                             results["sources"].append(data)
 
         if not results["sources"]:
-            return {"error": "No content could be retrieved. Check your internet connection or API keys."}
+            return {
+                "error": "No content could be retrieved. Check your internet connection or API keys."
+            }
 
         # AI Synthesis
         if self.model:
-            context = "\n\n".join([f"SOURCE: {s['url']}\nTITLE: {s['title']}\nCONTENT: {s['content']}" for s in results["sources"]])
+            context = "\n\n".join(
+                [
+                    f"SOURCE: {s['url']}\nTITLE: {s['title']}\nCONTENT: {s['content']}"
+                    for s in results["sources"]
+                ]
+            )
             prompt = (
                 f"Analyze the following web search results for the query: '{query}'\n\n"
                 f"{context}\n\n"
@@ -149,22 +161,25 @@ class WebSearcher:
             )
             try:
                 response = await self.model.aio.models.generate_content(
-                    model=Config.MODEL_NAME,
-                    contents=prompt
+                    model=Config.MODEL_NAME, contents=prompt
                 )
                 summary = extract_full_model_response(response, include_function_calls=False)
                 results["summary"] = summary if summary else "No summary generated."
             except (ValueError, AttributeError):
-                results["summary"] = "AI returned a non-text summary. Please review search sources manually."
+                results["summary"] = (
+                    "AI returned a non-text summary. Please review search sources manually."
+                )
             except Exception as e:
                 results["summary"] = f"AI Analysis failed: {e}"
-        
+
         return results
 
     def display_results(self, results: Dict):
         """Displays the detailed search results in a production-grade UI."""
         if "error" in results:
-            self.console.print(f"[bold red]Search Error:[/bold red] {escape(str(results['error']))}")
+            self.console.print(
+                f"[bold red]Search Error:[/bold red] {escape(str(results['error']))}"
+            )
             return
 
         table = Table(title=f"Search Results: {results['query']}", box=BORDERLESS_BOX)
@@ -176,17 +191,24 @@ class WebSearcher:
 
         self.console.print(table)
         if results["summary"]:
-            self.console.print(Panel(Markdown(results["summary"]), title="[AI SYNTHESIS]", border_style="green", box=BORDERLESS_BOX))
+            self.console.print(
+                Panel(
+                    Markdown(results["summary"]),
+                    title="[AI SYNTHESIS]",
+                    border_style="green",
+                    box=BORDERLESS_BOX,
+                )
+            )
 
 
 def main():
     import os
     from google import genai
-    
+
     query = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "latest linux kernel version"
     api_key = os.getenv("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
-    
+
     searcher = WebSearcher(model=client)
     with Console().status("[bold blue]Running deep search...", spinner="dots"):
         results = asyncio.run(searcher.search_and_analyze(query))

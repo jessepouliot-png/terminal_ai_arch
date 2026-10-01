@@ -8,6 +8,7 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ENV = os.path.join(PROJECT_DIR, ".env")
 USER_ENV = os.path.expanduser("~/.agent_terminal/.env")
 
+
 def load_environment(override: bool = True):
     """Loads environment variables from prioritized .env files."""
     # 1. Project directory .env (/home/jpx/Project/terminal/.env)
@@ -19,23 +20,17 @@ def load_environment(override: bool = True):
     # 3. Current working directory .env
     load_dotenv(override=override)
 
+
 # Load environment on module import
 load_environment(override=True)
 
 # Borderless box style that omits all frame lines while preserving titles, subtitles, and padding
-BORDERLESS_BOX = Box(
-    "    \n"
-    "    \n"
-    "    \n"
-    "    \n"
-    "    \n"
-    "    \n"
-    "    \n"
-    "    \n"
-)
+BORDERLESS_BOX = Box("    \n    \n    \n    \n    \n    \n    \n    \n")
+
 
 class ConfigMeta(type):
     """Metaclass allowing dynamic retrieval and update of API keys and models."""
+
     _custom_gemini_key: Optional[str] = None
     _custom_model_name: Optional[str] = None
 
@@ -63,21 +58,22 @@ class ConfigMeta(type):
         if value:
             os.environ["MODEL_NAME"] = value
 
+
 class Config(metaclass=ConfigMeta):
     """Production configuration for the Arch AI Terminal TUI."""
-    
+
     # Core API Keys & Models
     STEAM_API_KEY = os.getenv("STEAM_API_KEY")
     STEAM_ID = os.getenv("STEAM_ID")
     IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gemini-2.5-flash-image")
-    
+
     # UI Themes
     COLOR_ARCH = "cyan"
     COLOR_PACMAN = "yellow"
     COLOR_GHOST = "magenta"
     COLOR_GAMING = "gold1"
     COLOR_IMAGE = "orchid"
-    
+
     # Data Paths
     APP_DIR = os.path.expanduser("~/.agent_terminal")
     DB_PATH = os.path.join(APP_DIR, "terminal_intelligence.db")
@@ -122,7 +118,7 @@ class Config(metaclass=ConfigMeta):
             "masked": cls.mask_key(key),
             "length": len(key) if key else 0,
             "source": source,
-            "is_set": bool(key)
+            "is_set": bool(key),
         }
 
     @classmethod
@@ -172,7 +168,6 @@ class Config(metaclass=ConfigMeta):
         os.makedirs(cls.APP_DIR, exist_ok=True)
         os.makedirs(cls.IMAGE_DIR, exist_ok=True)
 
+
 # Initialize paths on module load
 Config.ensure_directories()
-
-

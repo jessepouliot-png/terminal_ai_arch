@@ -3,9 +3,11 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from arch_ai.image_generator import ImageGenerator
 
+
 def test_image_generator_init():
     gen = ImageGenerator()
     assert os.path.exists(gen.output_dir)
+
 
 def test_sanitize_filename():
     gen = ImageGenerator()
@@ -15,11 +17,13 @@ def test_sanitize_filename():
     assert "!" not in filename
     assert "@" not in filename
 
+
 @pytest.mark.asyncio
 async def test_generate_image_empty_prompt():
     gen = ImageGenerator()
     res = await gen.generate_image("   ")
     assert res is None
+
 
 @pytest.mark.asyncio
 async def test_generate_image_mock_success(tmp_path):

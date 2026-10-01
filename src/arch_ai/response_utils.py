@@ -12,7 +12,7 @@ This module inspects `candidates.content.parts` to ensure the complete response
 is captured without warnings and without discarding tool calls or intermediate text.
 """
 
-from typing import Any, List, Optional
+from typing import Any, List
 
 
 def extract_parts_from_response(response: Any) -> List[Any]:
@@ -75,8 +75,7 @@ def extract_full_model_response(response: Any, include_function_calls: bool = Fa
     if parts:
         # Collect regular text parts (excluding thoughts)
         text_parts = [
-            p.text for p in parts
-            if getattr(p, "text", None) and not getattr(p, "thought", False)
+            p.text for p in parts if getattr(p, "text", None) and not getattr(p, "thought", False)
         ]
 
         # If no non-thought text was found, check if there's any text at all
@@ -90,7 +89,9 @@ def extract_full_model_response(response: Any, include_function_calls: bool = Fa
         for p in parts:
             if getattr(p, "executable_code", None) and getattr(p.executable_code, "code", None):
                 code_parts.append(f"```python\n{p.executable_code.code}\n```")
-            if getattr(p, "code_execution_result", None) and getattr(p.code_execution_result, "output", None):
+            if getattr(p, "code_execution_result", None) and getattr(
+                p.code_execution_result, "output", None
+            ):
                 code_parts.append(f"```output\n{p.code_execution_result.output}\n```")
 
         if code_parts:

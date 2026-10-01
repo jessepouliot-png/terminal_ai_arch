@@ -3,8 +3,6 @@ import sys
 import shutil
 import psutil
 import tempfile
-import subprocess
-import logging
 import shlex
 import signal
 import asyncio
@@ -13,7 +11,7 @@ import time
 import math
 import tenacity
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Tuple
 
 from google import genai
 from google.genai import types
@@ -22,18 +20,15 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.styles import Style
-from prompt_toolkit.formatted_text import ANSI, HTML, FormattedText
+from prompt_toolkit.formatted_text import ANSI, FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 
 
-from rich.console import Console, Group
+from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.text import Text
-from rich import box
-from rich.logging import RichHandler
-from rich.spinner import Spinner
 from rich.markup import escape
 
 from arch_ai.config import Config, BORDERLESS_BOX
@@ -45,25 +40,22 @@ from arch_ai.image_generator import ImageGenerator
 from arch_ai.tools import TOOLS_SCHEMA, TOOL_MAP
 from arch_ai.sandbox import sandbox_manager, SandboxManager
 from arch_ai.memory_manager import MemoryManager
-from arch_ai.response_utils import extract_full_model_response, extract_function_calls
+from arch_ai.response_utils import extract_full_model_response
 
 from rich.markdown import CodeBlock
 from rich.syntax import Syntax
+
 
 class CustomCodeBlock(CodeBlock):
     def __rich_console__(self, console, options):
         code = str(self.text).rstrip()
         yield Syntax(
-            code,
-            self.lexer_name,
-            theme=self.theme,
-            word_wrap=True,
-            background_color="default"
+            code, self.lexer_name, theme=self.theme, word_wrap=True, background_color="default"
         )
+
 
 Markdown.elements["fence"] = CustomCodeBlock
 Markdown.elements["code_block"] = CustomCodeBlock
-
 
 
 def rainbow_text(text: str, freq: float = 0.1) -> Text:
@@ -75,15 +67,32 @@ def rainbow_text(text: str, freq: float = 0.1) -> Text:
         rich_text.append(char, style=f"rgb({r},{g},{b})")
     return rich_text
 
-from arch_ai.logger_utils import StructuredLogger, setup_logging
+
+from arch_ai.logger_utils import setup_logging
 
 log = setup_logging(Config.LOG_FILE)
 
-_BASE_COMMANDS = ("/chat", "/cli", "/gaming", "/steam", "/image", "/sandbox", "/shell", "/stats", "/audit", "/clear", "/help", "/index", "exit")
+_BASE_COMMANDS = (
+    "/chat",
+    "/cli",
+    "/gaming",
+    "/steam",
+    "/image",
+    "/sandbox",
+    "/shell",
+    "/stats",
+    "/audit",
+    "/clear",
+    "/reset",
+    "/help",
+    "/index",
+    "exit",
+)
 _CLI_EXTRA_COMMANDS = ("pacman", "yay", "systemctl", "ls", "cd", "cat", "rm", "mv", "cp", "mkdir")
 _SANDBOX_SUBS = ("shell", "status", "stop", "reset")
 _STEAM_SUBS = ("status", "installed", "search", "launch", "news", "refresh")
 _GAMING_SUBS = ("scan", "optimize", "status", "library", "refresh")
+
 
 class TerminalCompleter(Completer):
     def __init__(self, terminal):
@@ -93,21 +102,21 @@ class TerminalCompleter(Completer):
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
         if text.startswith("/sandbox "):
-            sub_text = text[len("/sandbox "):]
+            sub_text = text[len("/sandbox ") :]
             for sub in _SANDBOX_SUBS:
                 if sub.startswith(sub_text):
                     yield Completion(sub, start_position=-len(sub_text))
             return
 
         if text.startswith("/gaming "):
-            sub_text = text[len("/gaming "):]
+            sub_text = text[len("/gaming ") :]
             for sub in _GAMING_SUBS:
                 if sub.startswith(sub_text):
                     yield Completion(sub, start_position=-len(sub_text))
             return
 
         if text.startswith("/steam "):
-            sub_text = text[len("/steam "):]
+            sub_text = text[len("/steam ") :]
             for sub in _STEAM_SUBS:
                 if sub.startswith(sub_text):
                     yield Completion(sub, start_position=-len(sub_text))
@@ -154,9 +163,12 @@ class TerminalCompleter(Completer):
             cached_entries = self._cache.get(dirname, {}).get("entries", [])
             for name, is_d in cached_entries:
                 if name.startswith(basename):
-                    yield Completion(name, start_position=-len(basename), display=name + "/" if is_d else name)
+                    yield Completion(
+                        name, start_position=-len(basename), display=name + "/" if is_d else name
+                    )
         except Exception:
             pass
+
 
 class AITerminal:
     def __init__(self):
@@ -196,53 +208,61 @@ class AITerminal:
     def _setup_prompt_toolkit(self):
         bindings = KeyBindings()
 
-        @bindings.add('f1')
+        @bindings.add("f1")
         def _(event):
             self.current_mode = "CLI"
             event.app.invalidate()
 
-        @bindings.add('f2')
+        @bindings.add("f2")
         def _(event):
             self.current_mode = "CHAT"
             event.app.invalidate()
 
-        @bindings.add('f3')
+        @bindings.add("f3")
         def _(event):
             self.current_mode = "GAMING"
             event.app.invalidate()
 
-        @bindings.add('f4')
+        @bindings.add("f4")
         def _(event):
             self.current_mode = "SANDBOX"
             event.app.invalidate()
 
-        @bindings.add('f5')
+        @bindings.add("f5")
         def _(event):
             self.current_mode = "IMAGE"
             event.app.invalidate()
 
         def get_bottom_toolbar():
             box_status = "🟢 Active" if sandbox_manager.is_active else "⚪ Inactive"
-            timing_str = f"{self.last_exec_time:.2f}s (code {self.last_exit_code})" if self.last_exec_time is not None else "Ready"
+            timing_str = (
+                f"{self.last_exec_time:.2f}s (code {self.last_exit_code})"
+                if self.last_exec_time is not None
+                else "Ready"
+            )
 
-            return FormattedText([
-                ('bold', "Mode: "),
-                ('', f"{self.current_mode} | "),
-                ('bold', "Sandbox: "),
-                ('', f"{box_status} | "),
-                ('bold', "Last: "),
-                ('', f"{timing_str} | "),
-                ('italic', "[F1:CLI F2:CHAT F3:GAME F4:BOX F5:IMG]")
-            ])
+            return FormattedText(
+                [
+                    ("bold", "Mode: "),
+                    ("", f"{self.current_mode} | "),
+                    ("bold", "Sandbox: "),
+                    ("", f"{box_status} | "),
+                    ("bold", "Last: "),
+                    ("", f"{timing_str} | "),
+                    ("italic", "[F1:CLI F2:CHAT F3:GAME F4:BOX F5:IMG]"),
+                ]
+            )
 
         history = FileHistory(os.path.expanduser("~/.agent_terminal_history"))
-        style = Style.from_dict({
-            'prompt': 'bold magenta',
-            'prompt-meta': '#707070',
-            'prompt-prefix': 'bold cyan',
-            'auto-suggestion': '#666666 italic',
-            'bottom-toolbar': '#ffffff bg:#1e1e1e',
-        })
+        style = Style.from_dict(
+            {
+                "prompt": "bold magenta",
+                "prompt-meta": "#707070",
+                "prompt-prefix": "bold cyan",
+                "auto-suggestion": "#666666 italic",
+                "bottom-toolbar": "#ffffff bg:#1e1e1e",
+            }
+        )
         self.session = PromptSession(
             history=history,
             completer=TerminalCompleter(self),
@@ -250,20 +270,29 @@ class AITerminal:
             key_bindings=bindings,
             bottom_toolbar=get_bottom_toolbar,
             mouse_support=False,
-            style=style
+            style=style,
         )
 
-
-
     def display_header(self, clear=False):
-        if clear: self.console.clear()
-        theme = {"CLI": Config.COLOR_ARCH, "CHAT": Config.COLOR_GHOST, "SANDBOX": "green", "GAMING": Config.COLOR_GAMING, "IMAGE": Config.COLOR_IMAGE}.get(self.current_mode, "white")
+        if clear:
+            self.console.clear()
+        theme = {
+            "CLI": Config.COLOR_ARCH,
+            "CHAT": Config.COLOR_GHOST,
+            "SANDBOX": "green",
+            "GAMING": Config.COLOR_GAMING,
+            "IMAGE": Config.COLOR_IMAGE,
+        }.get(self.current_mode, "white")
         icon = {"SANDBOX": "📦", "GAMING": "🕹️", "IMAGE": "🎨"}.get(self.current_mode, "ᗧ")
-        self.console.print(Panel(
-            rainbow_text(f"{icon} ARCH AI TERMINAL"),
-            subtitle=f" [bold yellow]Mode:[/bold yellow] [bold {theme}]{self.current_mode}[/bold {theme}]",
-            border_style=theme, box=BORDERLESS_BOX, expand=True
-        ))
+        self.console.print(
+            Panel(
+                rainbow_text(f"{icon} ARCH AI TERMINAL"),
+                subtitle=f" [bold yellow]Mode:[/bold yellow] [bold {theme}]{self.current_mode}[/bold {theme}]",
+                border_style=theme,
+                box=BORDERLESS_BOX,
+                expand=True,
+            )
+        )
 
     def display_help(self):
         help_text = """
@@ -279,11 +308,14 @@ class AITerminal:
         [bold cyan]/stats[/bold cyan]      - Behavioral Stats & Telemetry Info
         [bold cyan]/index[/bold cyan]      - Index current directory for AI knowledge
         [bold cyan]/clear[/bold cyan]      - Clear Screen
+        [bold cyan]/reset[/bold cyan]      - Wipe all memories and chat history to start clean
         [bold cyan]/help[/bold cyan]       - Show this message
         [bold cyan]exit[/bold cyan]        - Quit
 
         """
-        self.console.print(Panel(help_text, title="[HELP]", border_style="cyan", box=BORDERLESS_BOX, expand=True))
+        self.console.print(
+            Panel(help_text, title="[HELP]", border_style="cyan", box=BORDERLESS_BOX, expand=True)
+        )
 
     def display_sandbox_status(self):
         """Displays diagnostic and configuration status for the sandbox."""
@@ -302,27 +334,32 @@ class AITerminal:
             f"[bold]PIDs Limit:[/bold] {st['pids_limit']}",
             f"[bold]Read-Only Mount:[/bold] {st['read_only']}",
             f"[bold]Active Mounts:[/bold] {st['mount_map'] if st['mount_map'] else '[dim]None[/dim]'}",
-            f"[bold]Tracked Env Vars:[/bold] {st['env_vars_count']}"
+            f"[bold]Tracked Env Vars:[/bold] {st['env_vars_count']}",
         ]
-        self.console.print(Panel(
-            "\n".join(lines),
-            title="[SANDBOX STATUS]",
-            border_style="green",
-            box=BORDERLESS_BOX,
-            expand=True
-        ))
-
-
+        self.console.print(
+            Panel(
+                "\n".join(lines),
+                title="[SANDBOX STATUS]",
+                border_style="green",
+                box=BORDERLESS_BOX,
+                expand=True,
+            )
+        )
 
     def handle_interrupt(self, signum, frame):
         self.console.print("\n[yellow]Interrupted. Type 'exit' to quit.[/yellow]")
 
     def handle_cd(self, command: str) -> bool:
         parts = shlex.split(command)
-        if not parts or parts[0] != "cd": return False
+        if not parts or parts[0] != "cd":
+            return False
         try:
             current = os.getcwd()
-            path = self.prev_dir if (len(parts) > 1 and parts[1] == "-") else os.path.expanduser(parts[1] if len(parts) > 1 else "~")
+            path = (
+                self.prev_dir
+                if (len(parts) > 1 and parts[1] == "-")
+                else os.path.expanduser(parts[1] if len(parts) > 1 else "~")
+            )
             os.chdir(path)
             self.prev_dir = current
         except Exception as e:
@@ -335,17 +372,24 @@ class AITerminal:
             cwd = sandbox_manager.cwd
         else:
             cwd = os.getcwd().replace(os.path.expanduser("~"), "~")
-        prefix = {"CHAT": "ᗧ [CHAT]", "SANDBOX": "📦 [SANDBOX]", "GAMING": "🕹️ [GAMING]", "IMAGE": "🎨 [IMAGE]"}.get(self.current_mode, "ᗧ")
-        return FormattedText([
-            ('class:prompt-meta', f"{now} {cwd} "),
-            ('class:prompt-prefix', f"{prefix} ❯ "),
-        ])
-
+        prefix = {
+            "CHAT": "ᗧ [CHAT]",
+            "SANDBOX": "📦 [SANDBOX]",
+            "GAMING": "🕹️ [GAMING]",
+            "IMAGE": "🎨 [IMAGE]",
+        }.get(self.current_mode, "ᗧ")
+        return FormattedText(
+            [
+                ("class:prompt-meta", f"{now} {cwd} "),
+                ("class:prompt-prefix", f"{prefix} ❯ "),
+            ]
+        )
 
     async def summarize_history(self, history: List[Dict[str, str]]) -> str:
         """Uses the AI to summarize old history into a single cohesive state."""
-        if not history: return ""
-        
+        if not history:
+            return ""
+
         summary_prompt = (
             "Summarize the following technical conversation history into a concise 'Current System State & Goal' summary. "
             "Focus on the technical decisions, current directory, and the user's ultimate objective. "
@@ -353,11 +397,10 @@ class AITerminal:
         )
         for h in history:
             summary_prompt += f"USER: {h['user']}\nAGENT: {h['agent']}\n"
-            
+
         try:
             response = await self.client.aio.models.generate_content(
-                model=Config.MODEL_NAME,
-                contents=summary_prompt
+                model=Config.MODEL_NAME, contents=summary_prompt
             )
             summary_text = extract_full_model_response(response)
             return f"SUMMARY OF PREVIOUS CONVERSATION:\n{summary_text}\n" if summary_text else ""
@@ -369,51 +412,53 @@ class AITerminal:
         wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
         stop=tenacity.stop_after_attempt(3),
         retry=tenacity.retry_if_exception_type(Exception),
-        before_sleep=lambda retry_state: log.warning(f"Retrying AI call (attempt {retry_state.attempt_number})..."),
-        reraise=True
+        before_sleep=lambda retry_state: log.warning(
+            f"Retrying AI call (attempt {retry_state.attempt_number})..."
+        ),
+        reraise=True,
     )
-    async def _execute_gemini_turn(self, contents: List[types.Content], system_instruction: str, tools_list: list):
+    async def _execute_gemini_turn(
+        self, contents: List[types.Content], system_instruction: str, tools_list: list
+    ):
         return await self.client.aio.models.generate_content(
             model=Config.MODEL_NAME,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 tools=tools_list,
-                tool_config=types.ToolConfig(
-                    include_server_side_tool_invocations=True
-                ),
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                    disable=True
-                )
-            )
+                tool_config=types.ToolConfig(include_server_side_tool_invocations=True),
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            ),
         )
 
-    async def _execute_gemini_turn_stream(self, contents: List[types.Content], system_instruction: str, tools_list: list):
+    async def _execute_gemini_turn_stream(
+        self, contents: List[types.Content], system_instruction: str, tools_list: list
+    ):
         return await self.client.aio.models.generate_content_stream(
             model=Config.MODEL_NAME,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 tools=tools_list,
-                tool_config=types.ToolConfig(
-                    include_server_side_tool_invocations=True
-                ),
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                    disable=True
-                )
-            )
+                tool_config=types.ToolConfig(include_server_side_tool_invocations=True),
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            ),
         )
 
-
     async def query_gemini(self, prompt_text: str):
-        if not prompt_text.strip(): return
-        
+        if not prompt_text.strip():
+            return
+
         start_time = asyncio.get_event_loop().time()
         # 1. Local Knowledge Retrieval
         local_results = await self.analyzer.knowledge.search(prompt_text)
         local_context = ""
         if local_results:
-            local_context = "\nLOCAL PROJECT CONTEXT (RETRIEVED FILES):\n" + "\n".join([f"FILE: {r['path']}\nCONTENT: {r['content']}" for r in local_results]) + "\n\n"
+            local_context = (
+                "\nLOCAL PROJECT CONTEXT (RETRIEVED FILES):\n"
+                + "\n".join([f"FILE: {r['path']}\nCONTENT: {r['content']}" for r in local_results])
+                + "\n\n"
+            )
 
         # 2. History Management (Summarization if too long)
         raw_history = await self.analyzer.get_chat_history(limit=20)
@@ -432,14 +477,14 @@ class AITerminal:
             if u and a:
                 contents.append(types.Content(role="user", parts=[types.Part(text=u)]))
                 contents.append(types.Content(role="model", parts=[types.Part(text=a)]))
-        
+
         # Add summary and current context to the latest message
         final_prompt = f"{history_summary}{local_context}{prompt_text}"
         contents.append(types.Content(role="user", parts=[types.Part(text=final_prompt)]))
-        
+
         memories = MemoryManager.get_instance().get_all_memories()
         memory_str = "\n".join([f"- {m}" for m in memories]) if memories else "None"
-        
+
         system_instruction = (
             "ROLE: You are the 'Arch AI System Architect', an expert Linux and development assistant.\n"
             "KNOWLEDGE: You operate using 'Google Search Grounding' and local 'System Tools' for verified real-world accuracy.\n"
@@ -459,7 +504,7 @@ class AITerminal:
             "8. Prioritize security, official Arch Linux guidelines, and upstream documentation."
         )
 
-        tools_list = [self.grounding_tool] + TOOLS_SCHEMA + self.mcp.sessions
+        tools_list = [self.grounding_tool] + TOOLS_SCHEMA + self.mcp.gemini_tools
         full_reply = ""
         grounding_detected = False
         max_tool_iterations = 10
@@ -470,26 +515,33 @@ class AITerminal:
             turn_text = ""
             function_calls = []
             candidate_parts = []
-            
+
             self.console.print(rainbow_text("\nᗧ ARCH AI ASSISTANT"))
             with Live(console=self.console, refresh_per_second=15, transient=False) as live:
                 try:
-                    response_stream = await self._execute_gemini_turn_stream(contents, system_instruction, tools_list)
+                    response_stream = await self._execute_gemini_turn_stream(
+                        contents, system_instruction, tools_list
+                    )
                     async for chunk in response_stream:
-                        if getattr(chunk, "candidates", None) and getattr(chunk.candidates[0], "grounding_metadata", None):
+                        if getattr(chunk, "candidates", None) and getattr(
+                            chunk.candidates[0], "grounding_metadata", None
+                        ):
                             grounding_detected = True
-                            
-                        chunk_text = extract_full_model_response(chunk, include_function_calls=False)
+
+                        chunk_text = extract_full_model_response(
+                            chunk, include_function_calls=False
+                        )
                         if chunk_text:
                             turn_text += chunk_text
                             live.update(Markdown(turn_text))
-                            
+
                         from arch_ai.response_utils import extract_parts_from_response
+
                         for p in extract_parts_from_response(chunk):
                             if getattr(p, "function_call", None):
                                 function_calls.append(p.function_call)
                                 candidate_parts.append(p)
-                            
+
                 except Exception as e:
                     log.error(f"AI Generation Error: {e}")
                     full_reply = f"Error generating response: {e}"
@@ -512,40 +564,49 @@ class AITerminal:
                 for fc in function_calls:
                     tool_name = fc.name
                     tool_args = dict(fc.args) if getattr(fc, "args", None) else {}
-                    self.console.print(f"[bold cyan]🔧 Executing Tool:[/bold cyan] [green]{escape(tool_name)}[/green]({escape(str(tool_args))})")
-                    
+                    self.console.print(
+                        f"[bold cyan]🔧 Executing Tool:[/bold cyan] [green]{escape(tool_name)}[/green]({escape(str(tool_args))})"
+                    )
+
                     if tool_name in TOOL_MAP:
                         try:
                             tool_fn = TOOL_MAP[tool_name]
                             if inspect.iscoroutinefunction(tool_fn):
                                 result = await asyncio.wait_for(tool_fn(**tool_args), timeout=30)
                             else:
-                                result = await asyncio.wait_for(asyncio.to_thread(tool_fn, **tool_args), timeout=30)
+                                result = await asyncio.wait_for(
+                                    asyncio.to_thread(tool_fn, **tool_args), timeout=30
+                                )
                         except asyncio.TimeoutError:
-                            result = f"Error: Tool '{tool_name}' execution timed out after 30 seconds."
+                            result = (
+                                f"Error: Tool '{tool_name}' execution timed out after 30 seconds."
+                            )
                         except Exception as e:
                             result = f"Tool Error: {e}"
-                    elif hasattr(self, 'mcp') and tool_name in self.mcp.tool_map:
+                    elif hasattr(self, "mcp") and tool_name in self.mcp.tool_map:
                         try:
                             mcp_result = await self.mcp.call_tool(tool_name, tool_args)
                             if getattr(mcp_result, "content", None):
-                                result = "\n".join([c.text for c in mcp_result.content if getattr(c, "type", "") == "text"])
+                                result = "\n".join(
+                                    [
+                                        c.text
+                                        for c in mcp_result.content
+                                        if getattr(c, "type", "") == "text"
+                                    ]
+                                )
                             else:
                                 result = str(mcp_result)
                         except Exception as e:
                             result = f"MCP Tool Error: {e}"
                     else:
                         result = f"Error: Tool '{tool_name}' not recognized."
-                    
-                    executed_tool_results.append({
-                        "tool": tool_name,
-                        "args": str(tool_args),
-                        "result": str(result)
-                    })
+
+                    executed_tool_results.append(
+                        {"tool": tool_name, "args": str(tool_args), "result": str(result)}
+                    )
                     tool_response_parts.append(
                         types.Part.from_function_response(
-                            name=tool_name,
-                            response={"result": str(result)}
+                            name=tool_name, response={"result": str(result)}
                         )
                     )
 
@@ -571,7 +632,7 @@ class AITerminal:
                     synth_contents = list(contents) + [
                         types.Content(role="user", parts=[types.Part(text=synthesis_user_msg)])
                     ]
-                    
+
                     response_stream = await self.client.aio.models.generate_content_stream(
                         model=Config.MODEL_NAME,
                         contents=synth_contents,
@@ -589,44 +650,54 @@ class AITerminal:
                             ),
                             automatic_function_calling=types.AutomaticFunctionCallingConfig(
                                 disable=True
-                            )
-                        )
+                            ),
+                        ),
                     )
-                    
+
                     async for chunk in response_stream:
-                        if getattr(chunk, "candidates", None) and getattr(chunk.candidates[0], "grounding_metadata", None):
+                        if getattr(chunk, "candidates", None) and getattr(
+                            chunk.candidates[0], "grounding_metadata", None
+                        ):
                             grounding_detected = True
-                        chunk_text = extract_full_model_response(chunk, include_function_calls=False)
+                        chunk_text = extract_full_model_response(
+                            chunk, include_function_calls=False
+                        )
                         if chunk_text:
                             synth_text += chunk_text
                             live.update(Markdown(synth_text))
 
                     if intermediate_texts:
-                        full_reply = "\n\n".join(intermediate_texts + ([synth_text] if synth_text else []))
+                        full_reply = "\n\n".join(
+                            intermediate_texts + ([synth_text] if synth_text else [])
+                        )
                     else:
                         full_reply = synth_text
                 except Exception as e:
                     log.error(f"Final Synthesis Error: {e}")
-                    full_reply = f"Diagnostic completed, but encountered an error synthesizing response: {e}"
+                    full_reply = (
+                        f"Diagnostic completed, but encountered an error synthesizing response: {e}"
+                    )
 
         if not full_reply and executed_tool_results:
-            with self.console.status(f"[bold {Config.COLOR_GHOST}]Formatting Analysis from Tool Findings...", spinner="dots"):
+            with self.console.status(
+                f"[bold {Config.COLOR_GHOST}]Formatting Analysis from Tool Findings...",
+                spinner="dots",
+            ):
                 try:
-                    summary_prompt = (
-                        "The following diagnostic and inspection tools were executed on the system:\n\n"
-                    )
+                    summary_prompt = "The following diagnostic and inspection tools were executed on the system:\n\n"
                     for item in executed_tool_results:
-                        res_preview = item['result'][:1500]
+                        res_preview = item["result"][:1500]
                         summary_prompt += f"### Tool: `{item['tool']}`\nArguments: `{item['args']}`\nOutput:\n```\n{res_preview}\n```\n\n"
                     summary_prompt += (
                         f"Original User Request: {prompt_text}\n\n"
                         "Provide a comprehensive, professional, and actionable final report and recommendations based on all tool results above."
                     )
                     retry_resp = await self.client.aio.models.generate_content(
-                        model=Config.MODEL_NAME,
-                        contents=summary_prompt
+                        model=Config.MODEL_NAME, contents=summary_prompt
                     )
-                    full_reply = extract_full_model_response(retry_resp, include_function_calls=False)
+                    full_reply = extract_full_model_response(
+                        retry_resp, include_function_calls=False
+                    )
                 except Exception as e:
                     log.error(f"Fallback synthesis retry failed: {e}")
 
@@ -634,13 +705,13 @@ class AITerminal:
                 # Format structured diagnostic report directly from executed tools
                 report_lines = [
                     "### 🛠️ Diagnostic & Execution Summary\n",
-                    f"Completed **{len(executed_tool_results)}** autonomous actions for query: *{prompt_text}*\n"
+                    f"Completed **{len(executed_tool_results)}** autonomous actions for query: *{prompt_text}*\n",
                 ]
                 for item in executed_tool_results:
                     report_lines.append(f"#### 🔧 `{item['tool']}`")
-                    if item['args'] and item['args'] != "{}":
+                    if item["args"] and item["args"] != "{}":
                         report_lines.append(f"**Arguments:** `{item['args']}`")
-                    res = item['result'].strip()
+                    res = item["result"].strip()
                     report_lines.append(f"```\n{res}\n```\n")
                 full_reply = "\n".join(report_lines)
 
@@ -652,58 +723,68 @@ class AITerminal:
 
         # Display final response (only if not already streamed)
         sub = "Completed" + (" | [cyan]ᗧ Grounded[/cyan]" if grounding_detected else "")
-        if local_results: sub += " | [green]📁 Local Knowledge[/green]"
-        
+        if local_results:
+            sub += " | [green]📁 Local Knowledge[/green]"
+
         # We only print the fallback or un-streamed full reply if the main streams didn't render it
         # Actually, since we stream each turn, `full_reply` contains the combined text.
         # But we don't want to duplicate what was already streamed.
         # If we reached the fallback structured diagnostic (report_lines), it wasn't streamed.
         if "### 🛠️ Diagnostic & Execution Summary" in full_reply:
-            self.console.print(Panel(
-                Markdown(full_reply),
-                title=rainbow_text("ᗧ ARCH AI ASSISTANT"),
-                border_style=Config.COLOR_GHOST,
-                subtitle=sub,
-                box=BORDERLESS_BOX,
-                padding=(1, 2),
-                expand=True
-            ))
-
+            self.console.print(
+                Panel(
+                    Markdown(full_reply),
+                    title=rainbow_text("ᗧ ARCH AI ASSISTANT"),
+                    border_style=Config.COLOR_GHOST,
+                    subtitle=sub,
+                    box=BORDERLESS_BOX,
+                    padding=(1, 2),
+                    expand=True,
+                )
+            )
 
         await self.analyzer.log_chat(prompt_text, full_reply)
-        
+
         # Log telemetry
         duration = asyncio.get_event_loop().time() - start_time
-        await self.analyzer.telemetry.log_metric("ai_latency", duration, {"grounding": str(grounding_detected)})
+        await self.analyzer.telemetry.log_metric(
+            "ai_latency", duration, {"grounding": str(grounding_detected)}
+        )
 
     async def _check_command(self, cmd: str) -> bool:
         try:
-            proc = await asyncio.create_subprocess_exec("which", cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            proc = await asyncio.create_subprocess_exec(
+                "which", cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
             await proc.wait()
             return proc.returncode == 0
-        except:
+        except Exception:
             return False
 
     async def _execute_command_with_capture(self, command: str) -> Tuple[int, str]:
         if not await self._check_command("script"):
-            process = await asyncio.create_subprocess_shell(command, stdout=None, stderr=None, stdin=None)
+            process = await asyncio.create_subprocess_shell(
+                command, stdout=None, stderr=None, stdin=None
+            )
             await process.wait()
             return process.returncode, ""
 
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmp:
             tmp_path = tmp.name
-        
+
         try:
             # Use script to capture both stdout and stderr while maintaining TTY interactivity
             wrapped_command = f"script -q -e -c {shlex.quote(command)} {tmp_path}"
-            process = await asyncio.create_subprocess_shell(wrapped_command, stdout=None, stderr=None, stdin=None)
+            process = await asyncio.create_subprocess_shell(
+                wrapped_command, stdout=None, stderr=None, stdin=None
+            )
             await process.wait()
-            
+
             output = ""
             if os.path.exists(tmp_path):
-                with open(tmp_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
                     output = f.read()
-            
+
             # Basic cleanup of script output
             lines = output.splitlines()
             cleaned_lines = []
@@ -712,7 +793,7 @@ class AITerminal:
                     continue
                 cleaned_lines.append(line)
             output = "\n".join(cleaned_lines).strip()
-            
+
             return process.returncode, output
         finally:
             if os.path.exists(tmp_path):
@@ -725,14 +806,24 @@ class AITerminal:
         risk_level, reason = await self.analyzer.async_classify_risk(command)
         if risk_level in ["high", "critical", "medium"]:
             color = {"critical": "red", "high": "red", "medium": "yellow"}.get(risk_level, "white")
-            self.console.print(Panel(f"[bold {color}]RISK:[/bold {color}] {escape(reason)}", border_style=color, box=BORDERLESS_BOX, expand=True))
+            self.console.print(
+                Panel(
+                    f"[bold {color}]RISK:[/bold {color}] {escape(reason)}",
+                    border_style=color,
+                    box=BORDERLESS_BOX,
+                    expand=True,
+                )
+            )
             # Use prompt_async to get user confirmation
-            confirm = await self.session.prompt_async(ANSI(f"\x1b[1;33mConfirm execution? [y/N]: \x1b[0m"))
+            confirm = await self.session.prompt_async(
+                ANSI("\x1b[1;33mConfirm execution? [y/N]: \x1b[0m")
+            )
             if confirm.lower() != "y":
                 return
 
-        if self.handle_cd(command): return
-        
+        if self.handle_cd(command):
+            return
+
         t0 = time.perf_counter()
         return_code, output = await self._execute_command_with_capture(command)
         self.last_exec_time = time.perf_counter() - t0
@@ -740,25 +831,42 @@ class AITerminal:
 
         status = f"failed({return_code})" if return_code != 0 else "success"
         await self.analyzer.log_command(command, status)
-        
+
         if return_code != 0:
-            self.console.print(f"\n[bold red]Command failed with exit code {return_code}.[/bold red]")
-            if (await self.session.prompt_async(ANSI("\x1b[1;36mRun AI troubleshooter? [y/N]: \x1b[0m"))).lower() == "y":
+            self.console.print(
+                f"\n[bold red]Command failed with exit code {return_code}.[/bold red]"
+            )
+            if (
+                await self.session.prompt_async(
+                    ANSI("\x1b[1;36mRun AI troubleshooter? [y/N]: \x1b[0m")
+                )
+            ).lower() == "y":
                 error_msg = output if output else f"Exit Code: {return_code}"
                 if len(error_msg) > 5000:
                     error_msg = error_msg[:2500] + "\n... [TRUNCATED] ...\n" + error_msg[-2500:]
-                
+
                 fix_cmd = await self.troubleshooter.troubleshoot(command, error_msg)
                 if fix_cmd:
                     self.last_suggested_command = fix_cmd
                     self.last_suggested_time = time.time()
-                    choice = (await self.session.prompt_async(ANSI(f"\x1b[1;32mExecute suggested fix ({escape(fix_cmd)})? [y/N]: \x1b[0m"))).strip().lower()
+                    choice = (
+                        (
+                            await self.session.prompt_async(
+                                ANSI(
+                                    f"\x1b[1;32mExecute suggested fix ({escape(fix_cmd)})? [y/N]: \x1b[0m"
+                                )
+                            )
+                        )
+                        .strip()
+                        .lower()
+                    )
                     if choice == "y":
                         await self.run_cli_command(fix_cmd)
 
     async def synthesize_nl_command(self, query: str):
         """Converts natural language request (prefixed by #) into an executable shell command."""
-        if not query.strip(): return
+        if not query.strip():
+            return
         with self.console.status("[bold cyan]Synthesizing Arch Linux command...", spinner="dots"):
             prompt = (
                 "You are an expert Arch Linux terminal assistant. Convert this user request into a single, safe, "
@@ -767,49 +875,74 @@ class AITerminal:
             )
             try:
                 resp = await self.client.aio.models.generate_content(
-                    model=Config.MODEL_NAME,
-                    contents=prompt
+                    model=Config.MODEL_NAME, contents=prompt
                 )
                 raw_text = extract_full_model_response(resp).strip()
-                cmd = raw_text.replace("```bash", "").replace("```sh", "").replace("```", "").strip()
+                cmd = (
+                    raw_text.replace("```bash", "").replace("```sh", "").replace("```", "").strip()
+                )
             except Exception as e:
-                self.console.print(f"[bold red]Command Synthesis Failed:[/bold red] {escape(str(e))}")
+                self.console.print(
+                    f"[bold red]Command Synthesis Failed:[/bold red] {escape(str(e))}"
+                )
                 return
 
         if not cmd:
             self.console.print("[yellow]Could not synthesize a command.[/yellow]")
             return
 
-        self.console.print(Panel(
-            f"[bold cyan]{escape(cmd)}[/bold cyan]",
-            title="🤖 [bold]SYNTHESIZED COMMAND[/bold]",
-            subtitle="[dim]Generated from natural language request[/dim]",
-            border_style="cyan",
-            box=BORDERLESS_BOX,
-            padding=(0, 2),
-            expand=True
-        ))
+        self.console.print(
+            Panel(
+                f"[bold cyan]{escape(cmd)}[/bold cyan]",
+                title="🤖 [bold]SYNTHESIZED COMMAND[/bold]",
+                subtitle="[dim]Generated from natural language request[/dim]",
+                border_style="cyan",
+                box=BORDERLESS_BOX,
+                padding=(0, 2),
+                expand=True,
+            )
+        )
 
-        choice = (await self.session.prompt_async(ANSI("\x1b[1;32mExecute this command? [y/N]: \x1b[0m"))).strip().lower()
+        choice = (
+            (
+                await self.session.prompt_async(
+                    ANSI("\x1b[1;32mExecute this command? [y/N]: \x1b[0m")
+                )
+            )
+            .strip()
+            .lower()
+        )
         if choice == "y":
             await self.run_cli_command(cmd)
 
     async def audit_system_health(self):
         """Runs a comprehensive Arch Linux system health, pacman, and service audit."""
-        with self.console.status("[bold green]Running Arch Linux System Audit...", spinner="aesthetic"):
+        with self.console.status(
+            "[bold green]Running Arch Linux System Audit...", spinner="aesthetic"
+        ):
             # 1. Failed systemd units
             failed_units = []
             try:
-                proc = await asyncio.create_subprocess_shell("systemctl --failed --no-legend --plain", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                proc = await asyncio.create_subprocess_shell(
+                    "systemctl --failed --no-legend --plain",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
                 out, _ = await proc.communicate()
-                failed_units = [line.split()[0] for line in out.decode().splitlines() if line.strip()]
+                failed_units = [
+                    line.split()[0] for line in out.decode().splitlines() if line.strip()
+                ]
             except Exception:
                 pass
 
             # 2. Pacman orphan packages
             orphans = []
             try:
-                proc = await asyncio.create_subprocess_shell("pacman -Qtdq", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                proc = await asyncio.create_subprocess_shell(
+                    "pacman -Qtdq",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
                 out, _ = await proc.communicate()
                 orphans = [line.strip() for line in out.decode().splitlines() if line.strip()]
             except Exception:
@@ -819,9 +952,14 @@ class AITerminal:
             cache_size = "Unknown"
             if os.path.exists("/var/cache/pacman/pkg"):
                 try:
-                    proc = await asyncio.create_subprocess_shell("du -sh /var/cache/pacman/pkg", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                    proc = await asyncio.create_subprocess_shell(
+                        "du -sh /var/cache/pacman/pkg",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
                     out, _ = await proc.communicate()
-                    if out: cache_size = out.decode().split()[0]
+                    if out:
+                        cache_size = out.decode().split()[0]
                 except Exception:
                     pass
 
@@ -838,23 +976,28 @@ class AITerminal:
             updates_count = "N/A"
             if shutil.which("checkupdates"):
                 try:
-                    proc = await asyncio.create_subprocess_shell("checkupdates | wc -l", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                    proc = await asyncio.create_subprocess_shell(
+                        "checkupdates | wc -l",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
                     out, _ = await proc.communicate()
-                    if out: updates_count = out.decode().strip()
+                    if out:
+                        updates_count = out.decode().strip()
                 except Exception:
                     pass
 
         lines = [
             "### 🛡️ Arch Linux System Health & Maintenance Audit\n",
-            f"| Metric | Value | Status |",
-            f"| :--- | :--- | :--- |",
+            "| Metric | Value | Status |",
+            "| :--- | :--- | :--- |",
             f"| **Failed Services** | `{len(failed_units)} failed units` | {'✅ All Services Clean' if not failed_units else f'❌ {len(failed_units)} Failed'} |",
             f"| **Orphan Packages** | `{len(orphans)} unneeded` | {'✅ No Orphans' if not orphans else f'⚠️ {len(orphans)} to clean (`pacman -Rns $(pacman -Qtdq)`)'} |",
-            f"| **Pacman Cache** | `{cache_size}` | {'✅ Clean' if 'G' not in cache_size or float(cache_size.replace('G','')) < 5 else '⚠️ Large Cache (`paccache -r`)'} |",
+            f"| **Pacman Cache** | `{cache_size}` | {'✅ Clean' if 'G' not in cache_size or float(cache_size.replace('G', '')) < 5 else '⚠️ Large Cache (`paccache -r`)'} |",
             f"| **Root Disk Free** | `{disk_free_gb} GB / {disk_total_gb} GB ({disk_pct}% used)` | {'✅ Healthy' if disk_pct < 85 else '⚠️ Disk Space Low'} |",
             f"| **Memory Usage** | `{ram_used_pct}% in use` | {'✅ Healthy' if ram_used_pct < 85 else '⚠️ High Memory Load'} |",
             f"| **Pending Updates** | `{updates_count} packages` | {'✅ Up to date' if updates_count in ('0', 'N/A') else f'ℹ️ {updates_count} updates available'} |",
-            ""
+            "",
         ]
 
         if failed_units:
@@ -867,22 +1010,25 @@ class AITerminal:
             lines.append(f"#### 🧹 Clean Orphaned Packages ({len(orphans)}):")
             lines.append("```bash\nsudo pacman -Rns $(pacman -Qtdq)\n```\n")
 
-        self.console.print(Panel(
-            Markdown("\n".join(lines)),
-            title="[bold cyan]🛡️ ARCH SYSTEM AUDIT[/bold cyan]",
-            border_style="cyan",
-            box=BORDERLESS_BOX,
-            padding=(1, 2),
-            expand=True
-        ))
+        self.console.print(
+            Panel(
+                Markdown("\n".join(lines)),
+                title="[bold cyan]🛡️ ARCH SYSTEM AUDIT[/bold cyan]",
+                border_style="cyan",
+                box=BORDERLESS_BOX,
+                padding=(1, 2),
+                expand=True,
+            )
+        )
 
     async def start(self):
         SandboxManager.cleanup_orphaned_containers()
         self.display_header(clear=True)
         await self.analyzer.initialize()
-        
+
         # Load any MCP servers from environment or config
         import os
+
         mcp_servers = os.getenv("MCP_SERVERS", "")
         if mcp_servers:
             for srv in mcp_servers.split(","):
@@ -894,8 +1040,10 @@ class AITerminal:
             while self.is_running:
                 try:
                     user_input = (await self.session.prompt_async(self._get_prompt)).strip()
-                    if not user_input: continue
-                    if user_input.lower() in ['exit', 'quit']: break
+                    if not user_input:
+                        continue
+                    if user_input.lower() in ["exit", "quit"]:
+                        break
                     if user_input.startswith("#"):
                         await self.synthesize_nl_command(user_input[1:].strip())
                         continue
@@ -916,7 +1064,11 @@ class AITerminal:
                                 elif subcmd in ["status", "installed", "library"]:
                                     await self.gaming_companion.show_steam_status()
                                 else:
-                                    await self.gaming_companion.query(parts[1].strip(), await self.analyzer.get_chat_history(limit=5), analyzer=self.analyzer)
+                                    await self.gaming_companion.query(
+                                        parts[1].strip(),
+                                        await self.analyzer.get_chat_history(limit=5),
+                                        analyzer=self.analyzer,
+                                    )
                             else:
                                 self.current_mode = "GAMING"
                         elif cmd == "/audit":
@@ -932,7 +1084,9 @@ class AITerminal:
                                 elif subcmd in ["stop", "down"]:
                                     if sandbox_manager.is_active:
                                         sandbox_manager.stop()
-                                        self.console.print("[bold yellow]Sandbox container stopped cleanly.[/bold yellow]")
+                                        self.console.print(
+                                            "[bold yellow]Sandbox container stopped cleanly.[/bold yellow]"
+                                        )
                                     else:
                                         self.console.print("[dim]Sandbox is not active.[/dim]")
                                 elif subcmd in ["reset", "restart"]:
@@ -962,13 +1116,19 @@ class AITerminal:
                             elif subcmd == "installed":
                                 await self.gaming_companion.show_installed_games()
                             elif subcmd == "search":
-                                search_term = user_input.split(maxsplit=1)[1].replace("search", "", 1).strip()
+                                search_term = (
+                                    user_input.split(maxsplit=1)[1].replace("search", "", 1).strip()
+                                )
                                 await self.gaming_companion.search_store_games(search_term)
                             elif subcmd == "launch":
-                                launch_target = user_input.split(maxsplit=1)[1].replace("launch", "", 1).strip()
+                                launch_target = (
+                                    user_input.split(maxsplit=1)[1].replace("launch", "", 1).strip()
+                                )
                                 self.gaming_companion.launch_game(launch_target)
                             elif subcmd == "news":
-                                news_target = user_input.split(maxsplit=1)[1].replace("news", "", 1).strip()
+                                news_target = (
+                                    user_input.split(maxsplit=1)[1].replace("news", "", 1).strip()
+                                )
                                 await self.gaming_companion.show_game_news(news_target)
                             elif subcmd == "refresh":
                                 await self.gaming_companion.refresh_steam_cache()
@@ -978,31 +1138,62 @@ class AITerminal:
                                 await self.gaming_companion.show_game_compatibility(query)
                         elif cmd == "/shell":
                             await self._enter_sandbox_shell()
-                        elif cmd == "/clear": self.display_header(clear=True)
-                        elif cmd == "/help": self.display_help()
-                        elif cmd == "/stats": self.console.print(Panel(await self.analyzer.get_behavioral_stats(), title="[STATS]", border_style="yellow", box=BORDERLESS_BOX, expand=True))
+                        elif cmd == "/clear":
+                            self.display_header(clear=True)
+                        elif cmd == "/reset":
+                            result = MemoryManager.get_instance().clear_all_memories()
+                            self.console.print(f"[bold green]✓ {result}[/bold green]")
+                        elif cmd == "/help":
+                            self.display_help()
+                        elif cmd == "/stats":
+                            self.console.print(
+                                Panel(
+                                    await self.analyzer.get_behavioral_stats(),
+                                    title="[STATS]",
+                                    border_style="yellow",
+                                    box=BORDERLESS_BOX,
+                                    expand=True,
+                                )
+                            )
                         elif cmd == "/index":
-                            with self.console.status("[bold green]Indexing local files...", spinner="earth"):
+                            with self.console.status(
+                                "[bold green]Indexing local files...", spinner="earth"
+                            ):
                                 count = await self.analyzer.knowledge.index_directory(".")
-                                self.console.print(f"[bold green]Success:[/bold green] Indexed {count} new/modified files.")
+                                self.console.print(
+                                    f"[bold green]Success:[/bold green] Indexed {count} new/modified files."
+                                )
                         else:
-                            self.console.print(f"[yellow]Unknown command '{escape(cmd)}'. Type [bold cyan]/help[/bold cyan] for available commands.[/yellow]")
+                            self.console.print(
+                                f"[yellow]Unknown command '{escape(cmd)}'. Type [bold cyan]/help[/bold cyan] for available commands.[/yellow]"
+                            )
                         continue
-                    if self.current_mode == "CLI": await self.run_cli_command(user_input)
+                    if self.current_mode == "CLI":
+                        await self.run_cli_command(user_input)
                     elif self.current_mode == "SANDBOX":
                         if user_input.startswith("!"):
                             host_cmd = user_input[1:].strip()
                             if host_cmd:
-                                self.console.print(f"[dim]Host execution:[/dim] [cyan]{escape(host_cmd)}[/cyan]")
+                                self.console.print(
+                                    f"[dim]Host execution:[/dim] [cyan]{escape(host_cmd)}[/cyan]"
+                                )
                                 await self.run_cli_command(host_cmd)
                         else:
                             await self.run_sandbox_command(user_input)
-                    elif self.current_mode == "CHAT": await self.query_gemini(user_input)
-                    elif self.current_mode == "GAMING": await self.gaming_companion.query(user_input, await self.analyzer.get_chat_history(limit=5), analyzer=self.analyzer)
-                    elif self.current_mode == "IMAGE": await self.image_generator.generate_image(user_input)
+                    elif self.current_mode == "CHAT":
+                        await self.query_gemini(user_input)
+                    elif self.current_mode == "GAMING":
+                        await self.gaming_companion.query(
+                            user_input,
+                            await self.analyzer.get_chat_history(limit=5),
+                            analyzer=self.analyzer,
+                        )
+                    elif self.current_mode == "IMAGE":
+                        await self.image_generator.generate_image(user_input)
 
-                except (EOFError, KeyboardInterrupt): break
-                except Exception as e: 
+                except (EOFError, KeyboardInterrupt):
+                    break
+                except Exception as e:
                     log.exception(f"Loop Error: {e}")
                     self.console.print(f"[red]Critical Error: {escape(str(e))}[/red]")
         finally:
@@ -1015,18 +1206,26 @@ class AITerminal:
         """Ensures container sandbox is running and mounted; returns True if active."""
         if sandbox_manager.is_active:
             return True
-        with self.console.status("[bold green]Initializing Container Sandbox (Syncing Project)...", spinner="dots"):
+        with self.console.status(
+            "[bold green]Initializing Container Sandbox (Syncing Project)...", spinner="dots"
+        ):
             if sandbox_manager.start(mount_map={"./": "/workspace"}):
-                self.console.print(f"[bold green]Sandbox active ({sandbox_manager.engine}). Project synced to /workspace.[/bold green]")
+                self.console.print(
+                    f"[bold green]Sandbox active ({sandbox_manager.engine}). Project synced to /workspace.[/bold green]"
+                )
                 return True
             else:
-                self.console.print("[bold red]Failed to start sandbox. Is Docker or Podman running?[/bold red]")
+                self.console.print(
+                    "[bold red]Failed to start sandbox. Is Docker or Podman running?[/bold red]"
+                )
                 return False
 
     async def _enter_sandbox_shell(self):
         """Drops into an interactive persistent container shell session."""
         if self._ensure_sandbox_active():
-            self.console.print("[bold green]Entering Sandbox Shell... (type 'exit' to return)[/bold green]")
+            self.console.print(
+                "[bold green]Entering Sandbox Shell... (type 'exit' to return)[/bold green]"
+            )
             sandbox_manager.execute_interactive("bash || sh")
 
     async def run_sandbox_command(self, command: str):
@@ -1039,10 +1238,10 @@ class AITerminal:
 
         # We don't use a spinner here because an interactive command needs the TTY immediately
         return_code = sandbox_manager.execute_interactive(command)
-        
+
         status = f"sandbox_failed({return_code})" if return_code != 0 else "sandbox_success"
         await self.analyzer.log_command(f"[SANDBOX] {command}", status)
-        
+
         if return_code != 0:
             self.console.print(f"[bold red]Sandbox Error (Exit Code: {return_code})[/bold red]")
 
@@ -1057,6 +1256,6 @@ def main():
             print("\nShutting down sandbox...")
             sandbox_manager.stop()
 
+
 if __name__ == "__main__":
     main()
-

@@ -1,5 +1,4 @@
 import sqlite3
-import os
 import logging
 from typing import List
 
@@ -7,9 +6,10 @@ from arch_ai.config import Config
 
 logger = logging.getLogger("agent_terminal.memory")
 
+
 class MemoryManager:
     _instance = None
-    
+
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
@@ -19,18 +19,18 @@ class MemoryManager:
     def __init__(self):
         self.db_path = Config.DB_PATH
         self._init_db()
-        
+
     def _init_db(self):
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
+                cursor.execute("""
                     CREATE TABLE IF NOT EXISTS long_term_memory (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         fact TEXT UNIQUE NOT NULL,
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
-                ''')
+                """)
                 conn.commit()
         except Exception as e:
             logger.error(f"Failed to initialize memory DB: {e}")
@@ -40,7 +40,9 @@ class MemoryManager:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("INSERT OR IGNORE INTO long_term_memory (fact) VALUES (?)", (fact.strip(),))
+                cursor.execute(
+                    "INSERT OR IGNORE INTO long_term_memory (fact) VALUES (?)", (fact.strip(),)
+                )
                 conn.commit()
                 if cursor.rowcount > 0:
                     return f"Successfully saved memory: '{fact}'"
@@ -59,7 +61,7 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"Error fetching memories: {e}")
             return []
-            
+
     def clear_memory(self, fact: str) -> str:
         """Removes a specific fact from memory."""
         try:
@@ -73,3 +75,24 @@ class MemoryManager:
         except Exception as e:
             return f"Error removing memory: {e}"
 
+    def clear_all_memories(self) -> str:
+        """Removes all facts from memory and clears history tables."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM long_term_memory")
+
+                try:
+                    cursor.execute("DELETE FROM chats")
+                except sqlite3.OperationalError:
+                    pass
+
+                try:
+                    cursor.execute("DELETE FROM commands")
+                except sqlite3.OperationalError:
+                    pass
+
+                conn.commit()
+                return "All memories, chat history, and command history have been completely wiped. You are starting clean."
+        except Exception as e:
+            return f"Error clearing memory: {e}"

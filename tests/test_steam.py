@@ -1,10 +1,12 @@
 import pytest
 from arch_ai.steam_utils import SteamClient
 
+
 def test_steam_client_initialization():
     client = SteamClient(api_key="test_key", steam_id="test_id")
     assert client.api_key == "test_key"
     assert client.steam_id == "test_id"
+
 
 @pytest.mark.asyncio
 async def test_steam_format_unconfigured():
@@ -28,9 +30,11 @@ async def test_steam_format_game_report_defaults(tmp_path):
     report2 = await client.format_game_report(730, use_cache=True)
     assert "Cached Report" in report2
 
+
 def test_steam_find_libraries():
     libs = SteamClient.find_steam_libraries()
     assert isinstance(libs, list)
+
 
 def test_steam_installed_games():
     client = SteamClient(api_key=None, steam_id=None)
@@ -40,6 +44,7 @@ def test_steam_installed_games():
         assert "appid" in games[0]
         assert "name" in games[0]
         assert "size_gb" in games[0]
+
 
 def test_steam_status():
     client = SteamClient(api_key=None, steam_id=None)
@@ -51,12 +56,14 @@ def test_steam_status():
     formatted = client.format_steam_status()
     assert "Arch Linux Gaming & Steam Status" in formatted
 
+
 @pytest.mark.asyncio
 async def test_steam_resolve_by_appid():
     client = SteamClient(api_key=None, steam_id=None)
     res = await client.resolve_game("730")
     assert res is not None
     assert res["appid"] == 730
+
 
 @pytest.mark.asyncio
 async def test_steam_search_store():
@@ -68,6 +75,7 @@ async def test_steam_search_store():
         assert "name" in results[0]
         assert "price" in results[0]
 
+
 @pytest.mark.asyncio
 async def test_steam_clear_cache(tmp_path):
     db_file = str(tmp_path / "test_cache_clear.db")
@@ -77,14 +85,17 @@ async def test_steam_clear_cache(tmp_path):
     await client.clear_cache()
     assert await client._get_cached_kv("test_key") is None
 
+
 def test_steam_launch_game_missing():
     client = SteamClient(api_key=None, steam_id=None)
     success, msg = client.launch_game("nonexistent_game_xyz_99999")
     assert not success
     assert "Could not find installed game" in msg
 
+
 def test_gaming_optimizer_scan_and_format():
     from arch_ai.gaming import GamingOptimizer
+
     data = GamingOptimizer.scan_system()
     assert "score" in data
     assert "rating" in data
@@ -98,21 +109,26 @@ def test_gaming_optimizer_scan_and_format():
     assert "Arch Linux Gaming System Diagnostic Report" in report
     assert f"{data['score']}/100" in report
 
+
 def test_gaming_optimizer_actions():
     from arch_ai.gaming import GamingOptimizer
+
     success, actions, summary = GamingOptimizer.optimize_system(apply=False)
     assert isinstance(actions, list)
     assert len(actions) > 0
     assert "vm.max_map_count" in summary or "GameMode" in summary
 
+
 def test_gaming_arcade_spinner_registration():
     from rich.spinner import SPINNERS
     from arch_ai.gaming import GAMING_SPINNER_NAME
+
     assert GAMING_SPINNER_NAME in SPINNERS
     spinner_def = SPINNERS[GAMING_SPINNER_NAME]
     assert "frames" in spinner_def
     assert any("🎮" in f for f in spinner_def["frames"])
     assert any("🕹️" in f for f in spinner_def["frames"])
+
 
 @pytest.mark.asyncio
 async def test_gaming_companion_query_streaming_and_spinner():
@@ -142,4 +158,3 @@ async def test_gaming_companion_query_streaming_and_spinner():
     assert res is not None
     assert "gamemoderun %command%" in res
     await companion.aclose()
-

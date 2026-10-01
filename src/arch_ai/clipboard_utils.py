@@ -14,15 +14,38 @@ RE_FENCED_CODE = re.compile(r"```(?:bash|sh|zsh|shell)?\s*\n([\s\S]*?)\n```", re
 RE_INLINE_CODE = re.compile(r"`([^`\n]+)`")
 
 COMMAND_STARTERS = (
-    "sudo ", "pacman ", "yay ", "systemctl ", "docker ", "podman ",
-    "git ", "cd ", "mkdir ", "chmod ", "chown ", "cat ", "echo ",
-    "export ", "rm ", "cp ", "mv ", "ls ", "grep ", "find ", "ip ",
-    "journalctl ", "uname ", "curl ", "wget "
+    "sudo ",
+    "pacman ",
+    "yay ",
+    "systemctl ",
+    "docker ",
+    "podman ",
+    "git ",
+    "cd ",
+    "mkdir ",
+    "chmod ",
+    "chown ",
+    "cat ",
+    "echo ",
+    "export ",
+    "rm ",
+    "cp ",
+    "mv ",
+    "ls ",
+    "grep ",
+    "find ",
+    "ip ",
+    "journalctl ",
+    "uname ",
+    "curl ",
+    "wget ",
 )
+
 
 @lru_cache(maxsize=8)
 def _find_binary(name: str) -> Optional[str]:
     return shutil.which(name)
+
 
 def emit_osc52(text: str) -> bool:
     """
@@ -37,7 +60,7 @@ def emit_osc52(text: str) -> bool:
             seq = f"\x1bPtmux;\x1b\x1b]52;c;{encoded}\x07\x1b\\"
         else:
             seq = f"\x1b]52;c;{encoded}\x07"
-        
+
         # Write escape sequence to stdout
         if hasattr(sys.stdout, "write"):
             sys.stdout.write(seq)
@@ -47,16 +70,17 @@ def emit_osc52(text: str) -> bool:
         logger.debug(f"OSC 52 emission failed: {e}")
         return False
 
+
 def copy_to_clipboard(text: str) -> bool:
     """
     Copies text to the system clipboard across Wayland (wl-copy), X11 (xclip/xsel),
     and terminal emulators (OSC 52).
-    
+
     Returns True if at least one clipboard mechanism succeeded.
     """
     if text is None:
         return False
-    
+
     text_str = str(text)
     copied = False
 
@@ -69,7 +93,7 @@ def copy_to_clipboard(text: str) -> bool:
                     [wl_copy_bin],
                     stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
                 )
                 proc.communicate(input=text_str.encode("utf-8"), timeout=1.0)
                 if proc.returncode == 0:
@@ -86,7 +110,7 @@ def copy_to_clipboard(text: str) -> bool:
                     [xclip_bin, "-selection", "clipboard"],
                     stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
                 )
                 proc.communicate(input=text_str.encode("utf-8"), timeout=1.0)
                 if proc.returncode == 0:
@@ -102,7 +126,7 @@ def copy_to_clipboard(text: str) -> bool:
                         [xsel_bin, "--clipboard", "--input"],
                         stdin=subprocess.PIPE,
                         stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
+                        stderr=subprocess.DEVNULL,
                     )
                     proc.communicate(input=text_str.encode("utf-8"), timeout=1.0)
                     if proc.returncode == 0:
@@ -112,11 +136,20 @@ def copy_to_clipboard(text: str) -> bool:
 
     # 3. Fallback: if session variables were absent or tools failed, try available binaries directly
     if not copied:
-        for bin_name, args in [("wl-copy", []), ("xclip", ["-selection", "clipboard"]), ("xsel", ["--clipboard", "--input"])]:
+        for bin_name, args in [
+            ("wl-copy", []),
+            ("xclip", ["-selection", "clipboard"]),
+            ("xsel", ["--clipboard", "--input"]),
+        ]:
             binary = _find_binary(bin_name)
             if binary:
                 try:
-                    proc = subprocess.Popen([binary] + args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    proc = subprocess.Popen(
+                        [binary] + args,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
                     proc.communicate(input=text_str.encode("utf-8"), timeout=1.0)
                     if proc.returncode == 0:
                         copied = True
@@ -131,13 +164,16 @@ def copy_to_clipboard(text: str) -> bool:
 
     return copied
 
+
 def get_clipboard_text() -> Optional[str]:
     """Retrieves current text from the clipboard via wl-paste, xclip, or xsel."""
     if os.environ.get("WAYLAND_DISPLAY"):
         wl_paste_bin = _find_binary("wl-paste")
         if wl_paste_bin:
             try:
-                res = subprocess.run([wl_paste_bin, "--no-newline"], capture_output=True, text=True, timeout=1.0)
+                res = subprocess.run(
+                    [wl_paste_bin, "--no-newline"], capture_output=True, text=True, timeout=1.0
+                )
                 if res.returncode == 0:
                     return res.stdout
             except Exception as e:
@@ -147,7 +183,12 @@ def get_clipboard_text() -> Optional[str]:
         xclip_bin = _find_binary("xclip")
         if xclip_bin:
             try:
-                res = subprocess.run([xclip_bin, "-selection", "clipboard", "-o"], capture_output=True, text=True, timeout=1.0)
+                res = subprocess.run(
+                    [xclip_bin, "-selection", "clipboard", "-o"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1.0,
+                )
                 if res.returncode == 0:
                     return res.stdout
             except Exception as e:
@@ -156,13 +197,22 @@ def get_clipboard_text() -> Optional[str]:
         xsel_bin = _find_binary("xsel")
         if xsel_bin:
             try:
-                res = subprocess.run([xsel_bin, "--clipboard", "--output"], capture_output=True, text=True, timeout=1.0)
+                res = subprocess.run(
+                    [xsel_bin, "--clipboard", "--output"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1.0,
+                )
                 if res.returncode == 0:
                     return res.stdout
             except Exception as e:
                 logger.debug(f"xsel read failed: {e}")
 
-    for bin_name, args in [("wl-paste", ["--no-newline"]), ("xclip", ["-selection", "clipboard", "-o"]), ("xsel", ["--clipboard", "--output"])]:
+    for bin_name, args in [
+        ("wl-paste", ["--no-newline"]),
+        ("xclip", ["-selection", "clipboard", "-o"]),
+        ("xsel", ["--clipboard", "--output"]),
+    ]:
         binary = _find_binary(bin_name)
         if binary:
             try:
@@ -173,6 +223,7 @@ def get_clipboard_text() -> Optional[str]:
                 pass
 
     return None
+
 
 def extract_commands_from_text(text: str) -> List[str]:
     """
@@ -196,10 +247,13 @@ def extract_commands_from_text(text: str) -> List[str]:
         matches = RE_INLINE_CODE.findall(text)
         for m in matches:
             cmd = m.strip()
-            if any(cmd.startswith(starter) for starter in COMMAND_STARTERS) or ((" " in cmd or "-" in cmd) and len(cmd) > 2):
+            if any(cmd.startswith(starter) for starter in COMMAND_STARTERS) or (
+                (" " in cmd or "-" in cmd) and len(cmd) > 2
+            ):
                 commands.append(cmd)
 
     return commands
+
 
 def extract_primary_command(text: str) -> Optional[str]:
     """Extracts the first or primary command found in Markdown text."""

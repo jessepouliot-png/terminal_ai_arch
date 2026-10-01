@@ -5,7 +5,7 @@ from google.genai import types
 from arch_ai.response_utils import (
     extract_parts_from_response,
     extract_function_calls,
-    extract_full_model_response
+    extract_full_model_response,
 )
 
 

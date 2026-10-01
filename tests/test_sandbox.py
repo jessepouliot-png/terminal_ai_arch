@@ -9,6 +9,7 @@ from arch_ai.sandbox import (
     setup_signal_handlers,
 )
 
+
 def test_sandbox_initialization():
     sm = SandboxManager()
     assert sm.cwd == "/workspace"
@@ -16,9 +17,10 @@ def test_sandbox_initialization():
     assert sm.env == {}
     assert not sm.is_active
 
+
 def test_sandbox_handle_export():
     sm = SandboxManager()
-    
+
     # Test valid export
     assert sm.handle_export("export FOO=BAR")
     assert sm.env.get("FOO") == "BAR"
@@ -40,11 +42,13 @@ def test_sandbox_handle_export():
     # Non-export command
     assert not sm.handle_export("ls -la")
 
+
 def test_sandbox_handle_cd_non_cd():
     sm = SandboxManager()
     is_cd, err = sm.handle_cd("pwd")
     assert not is_cd
     assert err is None
+
 
 def test_sandbox_stop_when_active():
     sm = SandboxManager()
@@ -61,6 +65,7 @@ def test_sandbox_stop_when_active():
             stderr=subprocess_devnull(),
             timeout=3,
         )
+
 
 def test_sandbox_stop_fallback_to_rm_on_error():
     sm = SandboxManager()
@@ -79,6 +84,7 @@ def test_sandbox_stop_fallback_to_rm_on_error():
             timeout=3,
         )
 
+
 def test_cleanup_all_sandboxes():
     sm1 = SandboxManager()
     sm1.is_active = True
@@ -93,6 +99,7 @@ def test_cleanup_all_sandboxes():
         assert not sm1.is_active
         assert not sm2.is_active
         assert len(_active_sandboxes) == 0
+
 
 def test_signal_handling_cleans_up_sandboxes():
     sm = SandboxManager()
@@ -109,6 +116,7 @@ def test_signal_handling_cleans_up_sandboxes():
     assert exc_info.value.code == 128 + sighup
     assert not sm.is_active
     assert sm not in _active_sandboxes
+
 
 def test_cleanup_orphaned_containers():
     with patch("subprocess.run") as mock_run:
@@ -133,9 +141,12 @@ def test_cleanup_orphaned_containers():
             timeout=5,
         )
 
+
 def subprocess_devnull():
     import subprocess
+
     return subprocess.DEVNULL
+
 
 def test_sandbox_get_status():
     sm = SandboxManager()
@@ -146,25 +157,31 @@ def test_sandbox_get_status():
     assert "mem_limit" in status
     assert status["is_active"] is False
 
+
 def test_sandbox_engine_health_check_failure():
     sm = SandboxManager(engine="nonexistent_engine_xyz")
     healthy, err = sm.check_engine_health()
     assert not healthy
     assert "not found in PATH" in err
 
+
 def test_sandbox_engine_health_check_daemon_down():
     sm = SandboxManager(engine="docker")
     with patch("shutil.which", return_value="/usr/bin/docker"), patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=1, stderr="connect: connection refused", stdout="")
+        mock_run.return_value = MagicMock(
+            returncode=1, stderr="connect: connection refused", stdout=""
+        )
         healthy, err = sm.check_engine_health()
         assert not healthy
         assert "Cannot connect to docker daemon" in err
+
 
 def test_sandbox_handle_cd_compound_passthrough():
     sm = SandboxManager()
     is_cd, err = sm.handle_cd("cd /tmp && ls -la")
     assert not is_cd
     assert err is None
+
 
 def test_sandbox_handle_cd_with_spaces_inactive():
     sm = SandboxManager()
@@ -173,10 +190,12 @@ def test_sandbox_handle_cd_with_spaces_inactive():
     assert err is None
     assert sm.cwd == "/custom path/with spaces"
 
+
 def test_sandbox_read_file_inactive():
     sm = SandboxManager()
     res = sm.read_file("some_file.txt")
     assert "Sandbox is not active" in res
+
 
 @pytest.mark.asyncio
 async def test_sandbox_execute_async():

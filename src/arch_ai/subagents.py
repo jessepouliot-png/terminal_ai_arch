@@ -7,6 +7,7 @@ from arch_ai.config import Config
 
 logger = logging.getLogger("agent_terminal.subagents")
 
+
 class SubAgentManager:
     _instance = None
 
@@ -28,22 +29,23 @@ class SubAgentManager:
             response = await self.client.aio.models.generate_content(
                 model=Config.MODEL_NAME,
                 contents=f"You are an autonomous background researcher sub-agent. Perform a deep dive into the following task. Use your search grounding to fetch the latest information. Task: {task_description}",
-                config=genai.types.GenerateContentConfig(
-                    tools=[{"google_search": {}}]
-                )
+                config=genai.types.GenerateContentConfig(tools=[{"google_search": {}}]),
             )
-            
+
             report = response.text
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"research_report_{task_id}_{timestamp}.md"
             filepath = os.path.join(self.reports_dir, filename)
-            
+
             with open(filepath, "w") as f:
                 f.write(f"# Research Report: {task_description}\n\n{report}")
-                
+
             from arch_ai.memory_manager import MemoryManager
-            MemoryManager.get_instance().save_memory(f"Background Researcher finished report '{filename}' about: {task_description}")
-            
+
+            MemoryManager.get_instance().save_memory(
+                f"Background Researcher finished report '{filename}' about: {task_description}"
+            )
+
         except Exception as e:
             logger.error(f"Sub-agent task failed: {e}")
 
@@ -54,4 +56,3 @@ class SubAgentManager:
         task = asyncio.create_task(self._research_task(task_description, task_id))
         self.active_tasks.append(task)
         return f"Spawned Background Researcher Agent (Task ID: {task_id}). It will save its report to {self.reports_dir} and notify the memory system when done."
-

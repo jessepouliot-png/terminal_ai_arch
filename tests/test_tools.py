@@ -3,6 +3,7 @@ import tempfile
 import pytest
 from arch_ai.tools import SystemTools, TOOL_MAP, TOOLS_SCHEMA
 
+
 def test_system_tools_schema():
     assert len(TOOLS_SCHEMA) >= 12
     assert "read_file" in TOOL_MAP
@@ -23,13 +24,14 @@ def test_system_tools_schema():
 
 def test_function_response_content_role():
     from google.genai import types
+
     part = types.Part.from_function_response(
-        name="list_files",
-        response={"result": "file1.txt\nfile2.txt"}
+        name="list_files", response={"result": "file1.txt\nfile2.txt"}
     )
     content = types.Content(role="user", parts=[part])
     assert content.role == "user"
     assert content.parts[0].function_response.name == "list_files"
+
 
 @pytest.mark.asyncio
 async def test_execute_host_command_safe():
@@ -37,15 +39,15 @@ async def test_execute_host_command_safe():
     assert "Exit Code: 0" in res
     assert "hello arch" in res
 
+
 @pytest.mark.asyncio
 async def test_execute_host_command_blocked():
     res = await SystemTools.execute_host_command("rm -rf /tmp/test_dir")
     assert "Error: Command contains dangerous token" in res
 
 
-
 def test_read_file_fewer_lines():
-    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmp:
         tmp.write("line 1\nline 2\n")
         tmp_path = tmp.name
 
@@ -57,9 +59,11 @@ def test_read_file_fewer_lines():
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+
 def test_read_file_non_existent():
     result = SystemTools.read_file("/non/existent/path/for/test_file.txt")
     assert "Error: File not found" in result
+
 
 def test_write_and_patch_file():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -84,6 +88,7 @@ def test_write_and_patch_file():
         res_sec = SystemTools.write_file("/etc/shadow", "bad")
         assert "Error: Writing to protected system path" in res_sec
 
+
 def test_scan_and_optimize_gaming_system_tool():
     report = SystemTools.scan_gaming_system()
     assert "Arch Linux Gaming System Diagnostic Report" in report
@@ -92,14 +97,17 @@ def test_scan_and_optimize_gaming_system_tool():
     opt_report = SystemTools.optimize_gaming_system()
     assert "Gaming Optimization Report:" in opt_report
 
+
 def test_list_files():
     result = SystemTools.list_files(".")
     assert "pyproject.toml" in result
     assert "src" in result
 
+
 def test_list_files_invalid_dir():
     result = SystemTools.list_files("/non/existent/dir/xyz_123")
     assert "Error: Directory not found" in result
+
 
 def test_get_system_info():
     info = SystemTools.get_system_info()
@@ -107,26 +115,32 @@ def test_get_system_info():
     assert "memory_total_gb:" in info
     assert "cpu_count:" in info
 
+
 def test_check_process():
     # Look for a common process like python or pytest
     res = SystemTools.check_process("pytest")
     assert "PID:" in res or "No process found" in res
+
 
 def test_analyze_gaming_session_tool():
     report = SystemTools.analyze_gaming_session()
     assert "Live Gaming Session Forensic Report" in report
     assert "Display & System Configuration:" in report
 
+
 @pytest.mark.asyncio
 async def test_execute_host_command_timeout():
     import time
+
     t0 = time.time()
     res = await SystemTools.execute_host_command("sleep 5", timeout=1)
     duration = time.time() - t0
     assert "timed out" in res.lower()
     assert duration < 3.0  # Must terminate promptly
 
+
 def test_execute_code_in_sandbox_is_async():
     import inspect
+
     assert inspect.iscoroutinefunction(SystemTools.execute_code_in_sandbox)
     assert inspect.iscoroutinefunction(SystemTools.execute_sandbox_command)

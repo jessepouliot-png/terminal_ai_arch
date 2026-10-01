@@ -3,6 +3,7 @@ import os
 import tempfile
 from arch_ai.analyzer import BehaviorAnalyzer
 
+
 @pytest.fixture
 async def analyzer():
     # Use a temporary database for testing
@@ -15,11 +16,13 @@ async def analyzer():
     if os.path.exists(path):
         os.remove(path)
 
+
 @pytest.mark.asyncio
 async def test_classify_risk_low(analyzer):
     level, reason = analyzer.classify_risk("ls -la")
     assert level == "low"
     assert "Standard command" in reason
+
 
 @pytest.mark.asyncio
 async def test_classify_risk_high(analyzer):
@@ -27,11 +30,13 @@ async def test_classify_risk_high(analyzer):
     assert level == "high"
     assert "Forceful deletion" in reason
 
+
 @pytest.mark.asyncio
 async def test_classify_risk_critical(analyzer):
     level, reason = analyzer.classify_risk("rm -rf /")
     assert level == "critical"
     assert "Root directory deletion" in reason
+
 
 @pytest.mark.asyncio
 async def test_classify_risk_dd(analyzer):
@@ -39,11 +44,13 @@ async def test_classify_risk_dd(analyzer):
     assert level == "critical"
     assert "Raw device write" in reason
 
+
 @pytest.mark.asyncio
 async def test_log_command(analyzer):
     await analyzer.log_command("ls", "success")
     stats = await analyzer.get_behavioral_stats()
     assert "Total Operations: 1" in stats
+
 
 @pytest.mark.asyncio
 async def test_get_last_command(analyzer):
@@ -52,4 +59,3 @@ async def test_get_last_command(analyzer):
     assert await analyzer.get_last_command() == "pacman -Syu"
     await analyzer.log_command("echo test", "success")
     assert await analyzer.get_last_command() == "echo test"
-

@@ -21,12 +21,14 @@ _RE_ACF_NAME = re.compile(r'"name"\s+"([^"]+)"')
 _RE_ACF_SIZE = re.compile(r'"SizeOnDisk"\s+"(\d+)"')
 _RE_ACF_INSTALLDIR = re.compile(r'"installdir"\s+"([^"]+)"')
 
-_RE_REQ_HEADER = re.compile(r'<strong>\s*(Minimum|Recommended)\s*:?\s*</strong>', flags=re.IGNORECASE)
-_RE_BR = re.compile(r'<br\s*/?>', flags=re.IGNORECASE)
-_RE_LI = re.compile(r'<li>(.*?)</li>', flags=re.DOTALL | re.IGNORECASE)
-_RE_STRONG = re.compile(r'<strong>\s*(.*?)\s*</strong>', flags=re.DOTALL | re.IGNORECASE)
-_RE_HTML_TAGS = re.compile(r'<.*?>')
-_RE_WHITESPACE = re.compile(r'\s+')
+_RE_REQ_HEADER = re.compile(
+    r"<strong>\s*(Minimum|Recommended)\s*:?\s*</strong>", flags=re.IGNORECASE
+)
+_RE_BR = re.compile(r"<br\s*/?>", flags=re.IGNORECASE)
+_RE_LI = re.compile(r"<li>(.*?)</li>", flags=re.DOTALL | re.IGNORECASE)
+_RE_STRONG = re.compile(r"<strong>\s*(.*?)\s*</strong>", flags=re.DOTALL | re.IGNORECASE)
+_RE_HTML_TAGS = re.compile(r"<.*?>")
+_RE_WHITESPACE = re.compile(r"\s+")
 
 _RE_BBCODE = re.compile(r"\[/?(b|i|url|quote|img|list|\*)[^\]]*\]", flags=re.IGNORECASE)
 
@@ -35,7 +37,12 @@ class SteamClient:
     """Handles interaction with Steam Web API, Steam Store API, ProtonDB,
     and local Arch Linux Steam libraries with persistent connection pooling and SQLite caching."""
 
-    def __init__(self, api_key: Optional[str] = None, steam_id: Optional[str] = None, db_path: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        steam_id: Optional[str] = None,
+        db_path: Optional[str] = None,
+    ):
         self.api_key = api_key or Config.STEAM_API_KEY
         self.steam_id = steam_id or Config.STEAM_ID
         self.base_url = "https://api.steampowered.com"
@@ -55,7 +62,7 @@ class SteamClient:
             self._http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(10.0, connect=5.0),
                 limits=httpx.Limits(max_keepalive_connections=5, max_connections=15),
-                headers={"User-Agent": "ArchAITerminal/2.0 (Linux; Arch Linux)"}
+                headers={"User-Agent": "ArchAITerminal/2.0 (Linux; Arch Linux)"},
             )
         return self._http_client
 
@@ -70,21 +77,21 @@ class SteamClient:
             return
         try:
             async with aiosqlite.connect(self.db_path) as db:
-                await db.execute('''
+                await db.execute("""
                     CREATE TABLE IF NOT EXISTS steam_game_cache (
                         appid INTEGER PRIMARY KEY,
                         name TEXT,
                         report TEXT,
                         cached_at REAL
                     )
-                ''')
-                await db.execute('''
+                """)
+                await db.execute("""
                     CREATE TABLE IF NOT EXISTS steam_kv_cache (
                         cache_key TEXT PRIMARY KEY,
                         cache_data TEXT,
                         cached_at REAL
                     )
-                ''')
+                """)
                 await db.commit()
             self._cache_initialized = True
         except Exception as e:
@@ -95,7 +102,9 @@ class SteamClient:
         await self._init_cache_db()
         try:
             async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute("SELECT report, cached_at FROM steam_game_cache WHERE appid = ?", (appid,)) as cursor:
+                async with db.execute(
+                    "SELECT report, cached_at FROM steam_game_cache WHERE appid = ?", (appid,)
+                ) as cursor:
                     row = await cursor.fetchone()
                     if row:
                         report, cached_at = row
@@ -112,7 +121,7 @@ class SteamClient:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
                     "INSERT OR REPLACE INTO steam_game_cache (appid, name, report, cached_at) VALUES (?, ?, ?, ?)",
-                    (appid, name, report, time.time())
+                    (appid, name, report, time.time()),
                 )
                 await db.commit()
         except Exception as e:
@@ -123,7 +132,9 @@ class SteamClient:
         await self._init_cache_db()
         try:
             async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute("SELECT cache_data, cached_at FROM steam_kv_cache WHERE cache_key = ?", (key,)) as cursor:
+                async with db.execute(
+                    "SELECT cache_data, cached_at FROM steam_kv_cache WHERE cache_key = ?", (key,)
+                ) as cursor:
                     row = await cursor.fetchone()
                     if row:
                         data_str, cached_at = row
@@ -140,7 +151,7 @@ class SteamClient:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
                     "INSERT OR REPLACE INTO steam_kv_cache (cache_key, cache_data, cached_at) VALUES (?, ?, ?)",
-                    (key, json.dumps(data), time.time())
+                    (key, json.dumps(data), time.time()),
                 )
                 await db.commit()
         except Exception as e:
@@ -159,7 +170,9 @@ class SteamClient:
             log.warning(f"Error clearing steam cache: {e}")
             return False
 
-    async def get_owned_games(self, steam_id: Optional[str] = None, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+    async def get_owned_games(
+        self, steam_id: Optional[str] = None, use_cache: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """Fetches a list of owned games for a given Steam ID with SQLite caching."""
         target_id = steam_id or self.steam_id
         if not self.api_key or not target_id:
@@ -177,7 +190,7 @@ class SteamClient:
             "steamid": target_id,
             "include_appinfo": 1,
             "include_played_free_games": 1,
-            "format": "json"
+            "format": "json",
         }
 
         try:
@@ -193,7 +206,9 @@ class SteamClient:
             log.error(f"Steam API Error (GetOwnedGames): {e}")
         return None
 
-    async def get_recently_played_games(self, steam_id: Optional[str] = None, count: int = 5, use_cache: bool = True) -> Optional[List[Dict[str, Any]]]:
+    async def get_recently_played_games(
+        self, steam_id: Optional[str] = None, count: int = 5, use_cache: bool = True
+    ) -> Optional[List[Dict[str, Any]]]:
         """Fetches recently played games for a given Steam ID."""
         target_id = steam_id or self.steam_id
         if not self.api_key or not target_id:
@@ -206,12 +221,7 @@ class SteamClient:
                 return cached
 
         url = f"{self.base_url}/IPlayerService/GetRecentlyPlayedGames/v1/"
-        params = {
-            "key": self.api_key,
-            "steamid": target_id,
-            "count": count,
-            "format": "json"
-        }
+        params = {"key": self.api_key, "steamid": target_id, "count": count, "format": "json"}
 
         try:
             client = self._get_http_client()
@@ -224,7 +234,9 @@ class SteamClient:
             log.error(f"Steam API Error (GetRecentlyPlayedGames): {e}")
         return None
 
-    async def get_game_details(self, appid: int, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+    async def get_game_details(
+        self, appid: int, use_cache: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """Fetches store details for a specific game with SQLite caching."""
         cache_key = f"game_details:{appid}"
         if use_cache:
@@ -248,7 +260,9 @@ class SteamClient:
             log.error(f"Steam Store API Error: {e}")
         return None
 
-    async def get_protondb_summary(self, appid: int, use_cache: bool = True) -> Optional[Dict[str, Any]]:
+    async def get_protondb_summary(
+        self, appid: int, use_cache: bool = True
+    ) -> Optional[Dict[str, Any]]:
         """Fetches community Proton compatibility ratings and statistics from ProtonDB API."""
         cache_key = f"protondb:{appid}"
         if use_cache:
@@ -268,7 +282,9 @@ class SteamClient:
             log.warning(f"ProtonDB API fetch failed for {appid}: {e}")
         return None
 
-    async def get_game_news(self, appid: int, count: int = 3, use_cache: bool = True) -> List[Dict[str, Any]]:
+    async def get_game_news(
+        self, appid: int, count: int = 3, use_cache: bool = True
+    ) -> List[Dict[str, Any]]:
         """Fetches recent news items and patch notes for a game from Steam."""
         cache_key = f"news:{appid}:{count}"
         if use_cache:
@@ -315,11 +331,13 @@ class SteamClient:
                     if price_info:
                         cents = price_info.get("final", 0)
                         price_str = f"${cents / 100:.2f}" if cents > 0 else "Free"
-                    results.append({
-                        "appid": it.get("id"),
-                        "name": it.get("name", "Unknown"),
-                        "price": price_str
-                    })
+                    results.append(
+                        {
+                            "appid": it.get("id"),
+                            "name": it.get("name", "Unknown"),
+                            "price": price_str,
+                        }
+                    )
                 await self._save_cached_kv(cache_key, results)
                 return results
         except Exception as e:
@@ -383,14 +401,17 @@ class SteamClient:
 
                         if appid_m and name_m:
                             aid = int(appid_m.group(1))
-                            size_gb = round(int(size_m.group(1)) / (1024 ** 3), 1) if size_m else 0.0
-                            if aid not in installed_games or size_gb > installed_games[aid]["size_gb"]:
+                            size_gb = round(int(size_m.group(1)) / (1024**3), 1) if size_m else 0.0
+                            if (
+                                aid not in installed_games
+                                or size_gb > installed_games[aid]["size_gb"]
+                            ):
                                 installed_games[aid] = {
                                     "appid": aid,
                                     "name": name_m.group(1),
                                     "size_gb": size_gb,
                                     "installdir": installdir_m.group(1) if installdir_m else "",
-                                    "library": sdir
+                                    "library": sdir,
                                 }
                 except Exception:
                     pass
@@ -442,7 +463,7 @@ class SteamClient:
             "installed_protons": sorted(list(protons)),
             "gaming_tools": gaming_tools,
             "gpu": gpu,
-            "installed_game_count": len(self.get_installed_games())
+            "installed_game_count": len(self.get_installed_games()),
         }
 
     async def resolve_game(self, query: str) -> Optional[Dict[str, Any]]:
@@ -479,12 +500,20 @@ class SteamClient:
         # Substring in installed games
         part_inst = [g for g in installed if clean_q.lower() in g["name"].lower()]
         if part_inst:
-            return {"appid": part_inst[0]["appid"], "name": part_inst[0]["name"], "source": "installed"}
+            return {
+                "appid": part_inst[0]["appid"],
+                "name": part_inst[0]["name"],
+                "source": "installed",
+            }
 
         # 4. Search the Steam Store
         store_items = await self.search_store(clean_q, limit=3)
         if store_items:
-            return {"appid": store_items[0]["appid"], "name": store_items[0]["name"], "source": "store"}
+            return {
+                "appid": store_items[0]["appid"],
+                "name": store_items[0]["name"],
+                "source": "store",
+            }
 
         return None
 
@@ -509,7 +538,7 @@ class SteamClient:
             subprocess.Popen(
                 ["steam", f"steam://rungameid/{aid}"],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
             )
             return True, f"Launched **{name}** (AppID: {aid}) via Steam."
         except Exception as e:
@@ -519,7 +548,9 @@ class SteamClient:
     # Markdown Formatting
     # ==========================================
 
-    async def format_owned_games_summary(self, steam_id: Optional[str] = None, limit: int = 15) -> str:
+    async def format_owned_games_summary(
+        self, steam_id: Optional[str] = None, limit: int = 15
+    ) -> str:
         """Returns a formatted Markdown summary of owned games with playtimes."""
         data = await self.get_owned_games(steam_id)
         if not data or "games" not in data:
@@ -534,14 +565,16 @@ class SteamClient:
         lines = [
             f"**Steam Library Overview** ({total_games} total games)\n",
             "| AppID | Game Title | Playtime |",
-            "| :--- | :--- | :--- |"
+            "| :--- | :--- | :--- |",
         ]
 
         for g in displayed_games:
             hours = round(g.get("playtime_forever", 0) / 60, 1)
             lines.append(f"| `{g.get('appid')}` | {g.get('name', 'Unknown')} | {hours} hrs |")
 
-        lines.append("\n*(Type `/steam <appid or name>` for compatibility, or `/steam installed` for local games)*")
+        lines.append(
+            "\n*(Type `/steam <appid or name>` for compatibility, or `/steam installed` for local games)*"
+        )
         return "\n".join(lines)
 
     def format_installed_games_summary(self, limit: int = 20) -> str:
@@ -557,39 +590,47 @@ class SteamClient:
         lines = [
             f"**Locally Installed Steam Games** ({total_games} games, {total_gb} GB total disk space)\n",
             "| AppID | Game Title | Size | Install Directory |",
-            "| :--- | :--- | :--- | :--- |"
+            "| :--- | :--- | :--- | :--- |",
         ]
 
         for g in displayed:
-            lines.append(f"| `{g['appid']}` | {g['name']} | {g['size_gb']} GB | `{g['installdir']}` |")
+            lines.append(
+                f"| `{g['appid']}` | {g['name']} | {g['size_gb']} GB | `{g['installdir']}` |"
+            )
 
-        lines.append("\n*(Use `/steam <name>` for Proton report, or `/steam launch <name>` to launch)*")
+        lines.append(
+            "\n*(Use `/steam <name>` for Proton report, or `/steam launch <name>` to launch)*"
+        )
         return "\n".join(lines)
 
     def _clean_requirements(self, html_str: str) -> str:
         """Cleans raw Steam HTML requirements into neat Markdown list items without blank gaps."""
         if not html_str:
             return ""
-        html_str = _RE_REQ_HEADER.sub('', html_str)
-        html_str = _RE_BR.sub('\n', html_str)
+        html_str = _RE_REQ_HEADER.sub("", html_str)
+        html_str = _RE_BR.sub("\n", html_str)
 
         items = _RE_LI.findall(html_str)
         if items:
             cleaned_items = []
             for it in items:
-                it = _RE_STRONG.sub(r'**\1**', it)
-                it = _RE_HTML_TAGS.sub('', it)
-                it = _RE_WHITESPACE.sub(' ', it).strip()
+                it = _RE_STRONG.sub(r"**\1**", it)
+                it = _RE_HTML_TAGS.sub("", it)
+                it = _RE_WHITESPACE.sub(" ", it).strip()
                 if it:
                     cleaned_items.append(f"- {it}")
             if cleaned_items:
                 return "\n".join(cleaned_items)
 
-        clean = _RE_HTML_TAGS.sub(' ', html_str)
-        lines = [_RE_WHITESPACE.sub(' ', line).strip() for line in clean.splitlines() if line.strip()]
-        return "\n".join([f"- {l}" for l in lines])
+        clean = _RE_HTML_TAGS.sub(" ", html_str)
+        lines = [
+            _RE_WHITESPACE.sub(" ", line).strip() for line in clean.splitlines() if line.strip()
+        ]
+        return "\n".join([f"- {line}" for line in lines])
 
-    async def format_game_report(self, appid_or_name: Union[int, str], use_cache: bool = True) -> str:
+    async def format_game_report(
+        self, appid_or_name: Union[int, str], use_cache: bool = True
+    ) -> str:
         """Returns a comprehensive diagnostic and compatibility report for Arch Linux gaming."""
         if isinstance(appid_or_name, str) and not appid_or_name.isdigit():
             resolved = await self.resolve_game(appid_or_name)
@@ -608,17 +649,20 @@ class SteamClient:
         proton = await self.get_protondb_summary(appid)
 
         name = details.get("name", f"AppID {appid}") if details else f"AppID {appid}"
-        genres = ", ".join([g.get("description", "") for g in details.get("genres", [])]) if details else "N/A"
+        genres = (
+            ", ".join([g.get("description", "") for g in details.get("genres", [])])
+            if details
+            else "N/A"
+        )
 
         tier = "Unknown"
-        confidence = "N/A"
         trending = "N/A"
         score_pct = ""
         total_reports = ""
 
         if proton:
             tier = proton.get("tier", "unknown").upper()
-            confidence = proton.get("confidence", "N/A")
+            proton.get("confidence", "N/A")
             trending = proton.get("trendingTier", "unknown").upper()
             if "score" in proton:
                 score_pct = f" (Score: {int(proton['score'] * 100)}%)"
@@ -631,13 +675,17 @@ class SteamClient:
             "GOLD": "**GOLD (Runs great after tweaks)**",
             "SILVER": "**SILVER (Minor issues)**",
             "BRONZE": "**BRONZE (Frequent crashes)**",
-            "BORKED": "**BORKED (Unplayable)**"
+            "BORKED": "**BORKED (Unplayable)**",
         }.get(tier, f"**{tier}**")
 
         # Check local installation
         installed_games = {g["appid"]: g for g in self.get_installed_games()}
         is_installed = appid in installed_games
-        inst_text = f"Installed ✅ ({installed_games[appid]['size_gb']} GB)" if is_installed else "Not installed"
+        inst_text = (
+            f"Installed ✅ ({installed_games[appid]['size_gb']} GB)"
+            if is_installed
+            else "Not installed"
+        )
 
         report = [
             f"### 🎮 {name} (AppID: {appid})",
@@ -653,11 +701,13 @@ class SteamClient:
             "",
             "#### 💡 Optimization & Compatibility Tips:",
             "- For DirectX 11/12 games, ensure `vulkan-radeon` (AMD) or `nvidia-utils` (Nvidia) is installed.",
-            "- Use GE-Proton (`proton-ge-custom-bin` from AUR) if running into video playback or anti-cheat issues."
+            "- Use GE-Proton (`proton-ge-custom-bin` from AUR) if running into video playback or anti-cheat issues.",
         ]
 
         if os.path.exists("/dev/nvidia0"):
-            report.append("- **NVIDIA Hardware Detected**: Add `PROTON_ENABLE_NVAPI=1` for DLSS and Reflex support.")
+            report.append(
+                "- **NVIDIA Hardware Detected**: Add `PROTON_ENABLE_NVAPI=1` for DLSS and Reflex support."
+            )
 
         if is_installed:
             report.extend(["", f"*(💡 Quick Launch: type `/steam launch {appid}` to play now)*"])
@@ -721,12 +771,14 @@ class SteamClient:
         lines = [
             f"**Steam Store Search Results** for *'{query}'*\n",
             "| AppID | Title | Price |",
-            "| :--- | :--- | :--- |"
+            "| :--- | :--- | :--- |",
         ]
         for it in items:
             lines.append(f"| `{it['appid']}` | {it['name']} | {it['price']} |")
 
-        lines.append("\n*(Type `/steam <appid>` for compatibility report, or `/steam news <appid>` for patch notes)*")
+        lines.append(
+            "\n*(Type `/steam <appid>` for compatibility report, or `/steam news <appid>` for patch notes)*"
+        )
         return "\n".join(lines)
 
     def format_steam_status(self) -> str:
@@ -741,7 +793,7 @@ class SteamClient:
             f"- **Graphics Hardware:** {status['gpu']}",
             f"- **Installed Games:** {status['installed_game_count']} locally installed",
             "",
-            "#### 🍷 Installed Proton Versions:"
+            "#### 🍷 Installed Proton Versions:",
         ]
 
         if status["installed_protons"]:
@@ -750,10 +802,7 @@ class SteamClient:
         else:
             lines.append("- *No Proton runtimes detected in Steam directories.*")
 
-        lines.extend([
-            "",
-            "#### 🛠️ Linux Gaming Helpers (Arch Packages):"
-        ])
+        lines.extend(["", "#### 🛠️ Linux Gaming Helpers (Arch Packages):"])
         for tool, installed in status["gaming_tools"].items():
             icon = "✅ Installed" if installed else "⚠️ Missing"
             pkg_hint = "" if installed else f" (`sudo pacman -S {tool}`)"

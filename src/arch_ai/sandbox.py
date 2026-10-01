@@ -54,6 +54,7 @@ def setup_signal_handlers():
                         previous(signum, frame)
                     else:
                         sys.exit(128 + signum)
+
                 return handler
 
             signal.signal(sig, make_handler(prev))
@@ -70,7 +71,7 @@ class SandboxManager:
         self,
         image: Optional[str] = None,
         network_mode: Optional[str] = None,
-        engine: Optional[str] = None
+        engine: Optional[str] = None,
     ):
         self.image = image or getattr(Config, "SANDBOX_IMAGE", "archlinux:latest")
         self.network_mode = network_mode or getattr(Config, "SANDBOX_NETWORK", "bridge")
@@ -106,13 +107,19 @@ class SandboxManager:
     def check_engine_health(self) -> Tuple[bool, str]:
         """Checks if the container engine executable is available and the daemon is reachable."""
         if not shutil.which(self.engine):
-            return False, f"Container engine '{self.engine}' executable not found in PATH. Please install Docker or Podman."
+            return (
+                False,
+                f"Container engine '{self.engine}' executable not found in PATH. Please install Docker or Podman.",
+            )
         try:
             res = subprocess.run([self.engine, "info"], capture_output=True, text=True, timeout=3)
             if res.returncode != 0:
                 err_snippet = (res.stderr or res.stdout).strip().splitlines()
                 first_line = err_snippet[0] if err_snippet else "daemon unreachable"
-                return False, f"Cannot connect to {self.engine} daemon ({first_line}). On Arch Linux, try: sudo systemctl start {self.engine}"
+                return (
+                    False,
+                    f"Cannot connect to {self.engine} daemon ({first_line}). On Arch Linux, try: sudo systemctl start {self.engine}",
+                )
             return True, ""
         except subprocess.TimeoutExpired:
             return False, f"Timeout checking {self.engine} daemon status."
@@ -161,10 +168,22 @@ class SandboxManager:
 
         # Resolve directory natively inside the active container (handles symlinks, ~, spaces)
         try:
-            proc = subprocess.run([
-                self.engine, "exec", "-w", self.cwd, self.container_name,
-                "sh", "-c", 'cd "$1" 2>/dev/null && pwd', "_", target
-            ], capture_output=True, text=True)
+            proc = subprocess.run(
+                [
+                    self.engine,
+                    "exec",
+                    "-w",
+                    self.cwd,
+                    self.container_name,
+                    "sh",
+                    "-c",
+                    'cd "$1" 2>/dev/null && pwd',
+                    "_",
+                    target,
+                ],
+                capture_output=True,
+                text=True,
+            )
             if proc.returncode == 0 and proc.stdout.strip():
                 self.prev_cwd = self.cwd
                 self.cwd = proc.stdout.strip()
@@ -198,15 +217,19 @@ class SandboxManager:
         cpu_quota: Optional[int] = None,
         mount_map: Optional[dict] = None,
         read_only: Optional[bool] = None,
-        network_mode: Optional[str] = None
+        network_mode: Optional[str] = None,
     ) -> bool:
         """Starts a persistent container with resource limits, security caps, and volume mounts."""
         setup_signal_handlers()
 
         effective_mem = mem_limit or getattr(Config, "SANDBOX_MEMORY", "512m")
-        effective_cpu = cpu_quota if cpu_quota is not None else getattr(Config, "SANDBOX_CPU_QUOTA", 50000)
+        effective_cpu = (
+            cpu_quota if cpu_quota is not None else getattr(Config, "SANDBOX_CPU_QUOTA", 50000)
+        )
         effective_pids = getattr(Config, "SANDBOX_PIDS_LIMIT", 256)
-        effective_ro = read_only if read_only is not None else getattr(Config, "SANDBOX_READ_ONLY", False)
+        effective_ro = (
+            read_only if read_only is not None else getattr(Config, "SANDBOX_READ_ONLY", False)
+        )
         if network_mode:
             self.network_mode = network_mode
 
@@ -227,8 +250,13 @@ class SandboxManager:
 
         try:
             # Check if image exists, if not pull it
-            subprocess.run([self.engine, "image", "inspect", self.image], 
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=5)
+            subprocess.run(
+                [self.engine, "image", "inspect", self.image],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+                timeout=5,
+            )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             log.info(f"Pulling image {self.image} via {self.engine}...")
             try:
@@ -250,14 +278,23 @@ class SandboxManager:
                         mount_args.extend(["-v", f"{abs_host}:{container_path}{mode}"])
 
             cmd = [
-                self.engine, "run", "-d", "--rm", 
-                "--network", self.network_mode,
-                "--name", self.container_name,
-                "--memory", effective_mem,
-                "--cpu-quota", str(effective_cpu),
-                "--pids-limit", str(effective_pids),
-                "--security-opt", "no-new-privileges",
-                "--init"
+                self.engine,
+                "run",
+                "-d",
+                "--rm",
+                "--network",
+                self.network_mode,
+                "--name",
+                self.container_name,
+                "--memory",
+                effective_mem,
+                "--cpu-quota",
+                str(effective_cpu),
+                "--pids-limit",
+                str(effective_pids),
+                "--security-opt",
+                "no-new-privileges",
+                "--init",
             ]
             cmd.extend(mount_args)
             cmd.extend([self.image, "tail", "-f", "/dev/null"])
@@ -270,13 +307,19 @@ class SandboxManager:
             self.env = {}
 
             # Create /workspace if it doesn't exist
-            subprocess.run([self.engine, "exec", self.container_name, "mkdir", "-p", "/workspace"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(
+                [self.engine, "exec", self.container_name, "mkdir", "-p", "/workspace"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
 
-            log.info("Sandbox started successfully", 
-                     container_name=self.container_name, 
-                     engine=self.engine,
-                     mounts=self.mount_map)
+            log.info(
+                "Sandbox started successfully",
+                container_name=self.container_name,
+                engine=self.engine,
+                mounts=self.mount_map,
+            )
             return True
 
         except Exception as e:
@@ -372,7 +415,7 @@ class SandboxManager:
         # Check stateful export/unset command
         if self.handle_export(clean_cmd):
             return 0
-            
+
         try:
             cmd = [self.engine, "exec"] + tty_flags + ["-w", self.cwd]
             cmd.extend(self._build_env_args())
@@ -387,8 +430,11 @@ class SandboxManager:
         """Connects to an existing running container."""
         setup_signal_handlers()
         try:
-            result = subprocess.run([self.engine, "inspect", "-f", "{{.State.Running}}", container_id], 
-                                    capture_output=True, text=True)
+            result = subprocess.run(
+                [self.engine, "inspect", "-f", "{{.State.Running}}", container_id],
+                capture_output=True,
+                text=True,
+            )
             if result.returncode == 0 and result.stdout.strip() == "true":
                 self.container_name = container_id
                 self.is_active = True
@@ -402,20 +448,36 @@ class SandboxManager:
         """Writes content to a file inside the sandbox safely, ensuring parent dirs exist."""
         if not self.is_active:
             return False
-            
+
         try:
-            target_path = path if path.startswith("/") else os.path.normpath(os.path.join(self.cwd, path))
+            target_path = (
+                path if path.startswith("/") else os.path.normpath(os.path.join(self.cwd, path))
+            )
             dir_path = os.path.dirname(target_path)
             if dir_path:
                 subprocess.run(
                     [self.engine, "exec", self.container_name, "mkdir", "-p", dir_path],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    check=False
+                    check=False,
                 )
-            process = subprocess.Popen([
-                self.engine, "exec", "-i", "-w", self.cwd, self.container_name, "sh", "-c", 'cat > "$1"', "_", target_path
-            ], stdin=subprocess.PIPE, text=True)
+            process = subprocess.Popen(
+                [
+                    self.engine,
+                    "exec",
+                    "-i",
+                    "-w",
+                    self.cwd,
+                    self.container_name,
+                    "sh",
+                    "-c",
+                    'cat > "$1"',
+                    "_",
+                    target_path,
+                ],
+                stdin=subprocess.PIPE,
+                text=True,
+            )
             process.communicate(input=content, timeout=10)
             return process.returncode == 0
         except Exception as e:
@@ -427,12 +489,26 @@ class SandboxManager:
         if not self.is_active:
             return "Error: Sandbox is not active."
         try:
-            target_path = path if path.startswith("/") else os.path.normpath(os.path.join(self.cwd, path))
+            target_path = (
+                path if path.startswith("/") else os.path.normpath(os.path.join(self.cwd, path))
+            )
             res = subprocess.run(
-                [self.engine, "exec", "-w", self.cwd, self.container_name, "sh", "-c", 'head -n "$1" "$2" 2>&1', "_", str(lines), target_path],
+                [
+                    self.engine,
+                    "exec",
+                    "-w",
+                    self.cwd,
+                    self.container_name,
+                    "sh",
+                    "-c",
+                    'head -n "$1" "$2" 2>&1',
+                    "_",
+                    str(lines),
+                    target_path,
+                ],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             if res.returncode == 0:
                 return res.stdout if res.stdout else "File is empty."
